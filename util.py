@@ -1,7 +1,8 @@
+from ipaddress import IPv4Address
 from socket import socket
-from typing import Optional
+from typing import Optional, List
 
-from gns3fy import Node
+from gns3fy import Node, Project, Link
 
 
 class Console:
@@ -98,3 +99,87 @@ class Interface:
             return self.lien.side_a
         else:
             return self.lien.side_b
+
+def enumerate_nodes(gs,project_id)->NodeRepo:
+    mynodes = NodeRepo()
+    router_i = 1
+    for node in gs.get_nodes(project_id):
+        obj = Node(project_id=project_id, node_id=node['node_id'], connector=gs)
+        obj.get()
+        myconsole = Console(obj.console_host, obj.console)
+
+        obj.vty = myconsole
+        obj.interfaces = []
+
+        obj.router = obj.node_type == 'dynamips'
+        obj.router_id = str(IPv4Address(router_i))  # génère un router-id en forme a.b.c.d
+        router_i += 1
+
+        mynodes.add(obj)
+    return mynodes
+
+def enumerate_links(gs,project_id, mynodes):
+    in4 = 0
+    liens = []
+    for _link in gs.get_links(project_id):
+        link = Link(connector=gs, project_id=project_id, link_id=_link['link_id'])
+        link.get()
+        lien = Lien(link.link_id)
+        lien.interface_a = link.nodes[0]['label']['text']
+        lien.side_a = mynodes.get(link.nodes[0]['node_id'])
+        lien.side_b = mynodes.get(link.nodes[1]['node_id'])
+        lien.interface_b = link.nodes[1]['label']['text']
+
+        # le réseau IPv6 est basé sur la 3e partie de l'UUID du lien dans GNS3
+        # l'hôte sideA aura comme ip ::10, l'hote sideB ::11
+        lien.network6 = '2001:' + link.link_id.split('-')[3]
+        lien.network4 = f"10.10.{in4}"
+        in4 += 1
+
+        lien.side_a.interfaces.append(Interface(True, lien))
+        lien.side_b.interfaces.append(Interface(False, lien))
+        liens.append(lien)
+        print(lien)
+    return liens
+
+MAGIC_SVG = '<!-- fait par le script -->'
+
+
+# supprime les labels & dessins générés automatiquement
+def delete_drawings(project: Project):
+    if project.drawings is not None or True:
+        for draw in project.drawings:
+            s = draw['svg']
+            if s.split('>', 1)[1].startswith(MAGIC_SVG):  # or not draw['locked']:
+                project.update_drawing(drawing_id=draw['drawing_id'], locked=False)
+                project.delete_drawing(drawing_id=draw['drawing_id'])
+
+
+def display_subnets(project: Project, liens):
+    # affiche les subnets entre routeurs
+    for lien in liens:
+        text = f"{lien.network4}.0/24\n{lien.network6}::/64"
+        x = (lien.side_a.x + lien.side_b.x) // 2 - 25
+        y = (lien.side_a.y + lien.side_b.y) // 2
+        project.create_drawing(
+            svg=f'<svg width="120" height="40">{MAGIC_SVG}<rect width="120" height="40" fill="#ffffff" fill-opacity="1.0" stroke-width="2" stroke="#000000"/></svg>',
+            x=x, y=y, z=1, locked=True)
+        project.create_drawing(
+            svg=f'<svg width="39" height="30">{MAGIC_SVG}<text font-family="TypeWriter" font-size="10.0" font-weight="bold" fill="#346c59" stroke="#afafe1" stroke-width="100" fill-opacity="1.0">{text}\n</text>'
+                + '</svg>',
+            x=x, y=y, z=100, locked=True)
+
+
+def display_router_ids(project: Project, nodes: List[Node]):
+    # affiche les router-ids
+    for node in nodes:
+        if not node.router:
+            continue
+        x = node.x
+        y = node.y + 10
+        project.create_drawing(
+            svg=f'<svg width="60" height="15">{MAGIC_SVG}<rect width="60" height="15" fill="#ffffff" fill-opacity="1.0"/></svg>',
+            x=x, y=y, locked=True)
+        project.create_drawing(
+            svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}</text></svg>',
+            x=x, y=y - 4, locked=True)

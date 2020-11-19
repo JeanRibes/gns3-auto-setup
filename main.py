@@ -4,7 +4,7 @@ import gns3fy
 
 from util import *
 
-GNS3_PROJECT_NAME = "test-python-autoconfig"  # le nom de votre projet
+GNS3_PROJECT_NAME = "auto"  # le nom de votre projet. "auto" utilise celui qui est ouvert
 OSPF_AREA = '0'
 OSPF_PROCESS = 1
 config_custom = {  # permet de rajouter des paramètres personalisés
@@ -62,7 +62,7 @@ def make_config(router: Node, area: str = OSPF_AREA, ospf_process: int = OSPF_PR
 ipv6 unicast-routing
 ipv6 cef
 ip cef
-router ospfv3 {ospf_process}
+ipv6 router ospf {ospf_process}
     address-family ipv6 unicast
         redistribute connected
         exit-address-family
@@ -89,7 +89,7 @@ int {interface.get_name()}
     """
         if interface.reverse_router().router:
             s += f"ipv6 ospf {ospf_process} area {area}\n"
-            s+= f"ip ospf 1 area 0\n"
+            s += f"ip ospf 1 area 0\n"
         extra_conf_int = get_extra_interface_conf(router.name, interface.get_name())
         if len(extra_conf_int) > 1:
             s += extra_conf_int + "\nend\nconf t"  # pour éviter les problèmes
@@ -116,46 +116,21 @@ def apply_config(router: Node, config: str):
 
 if __name__ == '__main__':
     gs = gns3fy.Gns3Connector("http://localhost:3080", user="admin")
-    project_id = gs.get_project(name=GNS3_PROJECT_NAME)['project_id']
+    if GNS3_PROJECT_NAME != 'auto':
+        project_id = gs.get_project(name=GNS3_PROJECT_NAME)['project_id']
+    else:
+        project_id = list(filter(lambda p: p['status'] == 'opened', gs.get_projects()))[0]['project_id']
+    print(project_id)
+    project = gns3fy.Project(project_id=project_id, connector=gs)
+    project.get()
 
     # énumération des noeuds du projet et initialisation des consoles
-    mynodes = NodeRepo()
-    router_i = 1
-    for node in gs.get_nodes(project_id):
-        obj = gns3fy.Node(project_id=project_id, node_id=node['node_id'], connector=gs)
-        obj.get()
-        myconsole = Console(obj.console_host, obj.console)
+    mynodes = enumerate_nodes(gs, project_id)
 
-        obj.vty = myconsole
-        obj.interfaces = []
-
-        obj.router = obj.node_type == 'dynamips'
-        obj.router_id = str(IPv4Address(router_i))  # génère un router-id en forme a.b.c.d
-        router_i += 1
-
-        mynodes.add(obj)
-
-    # énumération des liens et assignation des réseaux
-    in4 = 0
-    for _link in gs.get_links(project_id):
-        link = gns3fy.Link(connector=gs, project_id=project_id, link_id=_link['link_id'])
-        link.get()
-        lien = Lien(link.link_id)
-        lien.interface_a = link.nodes[0]['label']['text']
-        lien.side_a = mynodes.get(link.nodes[0]['node_id'])
-        lien.side_b = mynodes.get(link.nodes[1]['node_id'])
-        lien.interface_b = link.nodes[1]['label']['text']
-
-        # le réseau IPv6 est basé sur la 3e partie de l'UUID du lien dans GNS3
-        # l'hôte sideA aura comme ip ::10, l'hote sideB ::11
-        lien.network6 = '2001:' + link.link_id.split('-')[3]
-        lien.network4 = f"10.10.{in4}"
-        in4 += 1
-
-        lien.side_a.interfaces.append(Interface(True, lien))
-        lien.side_b.interfaces.append(Interface(False, lien))
-
-        print(lien)
+    # énumération & résolution des liens puis assignation des réseaux
+    liens = enumerate_links(gs, project_id, mynodes)
+    project.get_drawings()
+    delete_drawings(project)
 
     # applique les configs sur tous les routeurs
     for node in mynodes.values():
@@ -165,3 +140,11 @@ if __name__ == '__main__':
             print(f"configuration de {node.name} (router-id {node.router_id}) ... ", end="")
             apply_config(node, cfg)  # reconfigure le routeur Cisco
             print("fini !")
+
+
+    # partie qui fait le joli affichage dans GNS3
+
+    display_subnets(project, liens)
+    display_router_ids(project, mynodes.values())
+
+
