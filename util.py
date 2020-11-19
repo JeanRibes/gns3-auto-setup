@@ -6,6 +6,7 @@ from gns3fy import Node
 
 class Console:
     sock: socket
+
     def __init__(self, console_host, console_port):
         self.sock = socket()
         try:
@@ -32,6 +33,7 @@ class NodeRepo(dict):
     def add(self, node: Node):
         self[node.node_id] = node
 
+
 class Lien:
     def __init__(self, lid):
         self.link_id = lid
@@ -39,23 +41,24 @@ class Lien:
     link_id: str
 
     side_a: Node
-    ip_a: str  # # 2001:0:dead:beef::10
+    ip6_a: str  # # 2001:0:dead:beef::10
     interface_a: str
 
-    network: str  # 2001:0:dead:beef
+    network6: str  # 2001:0:dead:beef
+    network4: str  # 10.0.8.
 
     interface_b: str
-    ip_b: str  # 2001:0:dead:beef::11
+    ip6_b: str  # 2001:0:dead:beef::11
     side_b: Node
 
     def __str__(self):
-        return f"{self.side_a.name}: {self.interface_a} [{self.get_ipa()}] <-> [{self.get_ipb()}] {self.interface_b}:{self.side_b.name}"
+        return f"{self.side_a.name}: {self.interface_a} [{self.get_ip6a()}] <-> [{self.get_ip6b()}] {self.interface_b}:{self.side_b.name}"
 
-    def get_ipa(self):
-        return f"{self.network}::10/64"
+    def get_ip6a(self):
+        return f"{self.network6}::10/64"
 
-    def get_ipb(self):
-        return f"{self.network}::11/64"
+    def get_ip6b(self):
+        return f"{self.network6}::11/64"
 
 
 class Interface:
@@ -66,11 +69,17 @@ class Interface:
     side_a: bool
     lien: Lien
 
-    def get_ip(self):
+    def get_ip6(self):
         if self.side_a:
-            return self.lien.get_ipa()
+            return self.lien.get_ip6a()
         else:
-            return self.lien.get_ipb()
+            return self.lien.get_ip6b()
+
+    def get_ip4(self):
+        """
+        l'adresse IP finit en 2 pour sideA, en 1 pour sideB
+        """
+        return f"{self.lien.network4}.{int(self.side_a) + 1} 255.255.255.0"
 
     def get_name(self):
         if self.side_a:

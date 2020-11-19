@@ -16,7 +16,7 @@ config_custom = {  # permet de rajouter des paramètres personalisés
             # dans le panneau "Topology Summary" > Node > clic
                 {
                     'disable': False,
-                    'extra': "ipv6 address 2001:0:8::1/64"
+                    'extra': "ipv6 address 2001:0:8::1/64\nip address 10.8.0.1 255.255.255.0 secondary"
                 },
             'f3/0': {
                 'disable': False,
@@ -60,12 +60,17 @@ def get_is_router_disabled(router_name: str):
 def make_config(router: Node, area: str = OSPF_AREA, ospf_process: int = OSPF_PROCESS) -> str:
     s = f"""###### config pour {router.name} ######
 ipv6 unicast-routing
+ipv6 cef
+ip cef
 router ospfv3 {ospf_process}
     address-family ipv6 unicast
         redistribute connected
         exit-address-family
     router-id {router.router_id}
   exit
+router ospf
+    redistribute connected subnets
+    router-id {router.router_id}
 {get_extra_global_conf(router.name)}
 end
 conf t"""
@@ -75,13 +80,16 @@ conf t"""
             continue
         s += f"""
 int {interface.get_name()}
-# connectee a l'interface {interface.reverse_int()} du routeur {interface.reverse_router().name}
+    description connectee a l'interface {interface.reverse_int()} du routeur {interface.reverse_router().name}
     no shut
     ipv6 enable
-    ipv6 address {interface.get_ip()}
+    mpls ip
+    ipv6 address {interface.get_ip6()}
+    ip address {interface.get_ip4()}
     """
         if interface.reverse_router().router:
             s += f"ipv6 ospf {ospf_process} area {area}\n"
+            s+= f"ip ospf 1 area 0\n"
         extra_conf_int = get_extra_interface_conf(router.name, interface.get_name())
         if len(extra_conf_int) > 1:
             s += extra_conf_int + "\nend\nconf t"  # pour éviter les problèmes
@@ -91,7 +99,7 @@ int {interface.get_name()}
     s += f"""
 end
 ###### fin de la config pour {router.name} ######
-    """
+"""
 
     return s
 
@@ -128,6 +136,7 @@ if __name__ == '__main__':
         mynodes.add(obj)
 
     # énumération des liens et assignation des réseaux
+    in4 = 0
     for _link in gs.get_links(project_id):
         link = gns3fy.Link(connector=gs, project_id=project_id, link_id=_link['link_id'])
         link.get()
@@ -139,7 +148,9 @@ if __name__ == '__main__':
 
         # le réseau IPv6 est basé sur la 3e partie de l'UUID du lien dans GNS3
         # l'hôte sideA aura comme ip ::10, l'hote sideB ::11
-        lien.network = '2001:' + link.link_id.split('-')[3]
+        lien.network6 = '2001:' + link.link_id.split('-')[3]
+        lien.network4 = f"10.10.{in4}"
+        in4 += 1
 
         lien.side_a.interfaces.append(Interface(True, lien))
         lien.side_b.interfaces.append(Interface(False, lien))
@@ -149,8 +160,8 @@ if __name__ == '__main__':
     # applique les configs sur tous les routeurs
     for node in mynodes.values():
         if node.router:
-            cfg = make_config(node, OSPF_AREA) # génère la config
-            # print(cfg)
+            cfg = make_config(node, OSPF_AREA)  # génère la config
+            print(cfg)
             print(f"configuration de {node.name} (router-id {node.router_id}) ... ", end="")
             apply_config(node, cfg)  # reconfigure le routeur Cisco
             print("fini !")

@@ -23,3 +23,6 @@ pip3 install gns3fy==0.7.1
 * Lancez le script
 * Attendez que les routeurs se découvrent et propagent leurs routes
 Et vous avez votre réseau OSPF tout fait !
+
+## Recommandation
+Ça marche avec des routeurs Cisco `c7200` avec les interfaces `PA-FE-TX`. J'ai pas testé le reste
