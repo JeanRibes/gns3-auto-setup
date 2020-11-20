@@ -72,10 +72,10 @@ interface_base_template = """#--
 int ${interface_name}
     description connexion a l'interface ${reverse_interface_name} du routeur ${reverse_router_name}
     no shut
-    ip address ${ip6}
+    ip address ${ip4}
     mpls ip
     ipv6 enable
-    ipv6 address ${ip4}
+    ipv6 address ${ip6}
 """
 
 # template ajouté aux interface de routages, i.e. connectées à un autre routeur

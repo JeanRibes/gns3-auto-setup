@@ -81,8 +81,8 @@ if __name__ == '__main__':
     # énumération & résolution des liens puis assignation des réseaux
     liens = enumerate_links(gs, project_id, mynodes)
 
-    print(make_config(mynodes.get_by_name('R5')))
-    exit(0)
+    #print(make_config(mynodes.get_by_name('R5')))
+    #exit(0)
 
     # applique les configs sur tous les routeurs
     for node in mynodes.values():
