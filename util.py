@@ -1,8 +1,10 @@
 from ipaddress import IPv4Address
 from socket import socket
-from typing import Optional, List
+from typing import List
 
 from gns3fy import Node, Project, Link
+
+from config import config_custom
 
 
 class Console:
@@ -15,7 +17,6 @@ class Console:
         except ConnectionRefusedError:
             print("Vous devez lancer le projet GNS3 pour configurer les routeurs")
             exit(0)
-        self.sock.recvfrom(100000)
 
     def write_conf(self, text: str):
         # on remplace \n par \r car la console Cisco attend \r comme saut de ligne
@@ -100,15 +101,13 @@ class Interface:
         else:
             return self.lien.side_b
 
-def enumerate_nodes(gs,project_id)->NodeRepo:
+
+def enumerate_nodes(gs, project_id) -> NodeRepo:
     mynodes = NodeRepo()
     router_i = 1
     for node in gs.get_nodes(project_id):
         obj = Node(project_id=project_id, node_id=node['node_id'], connector=gs)
         obj.get()
-        myconsole = Console(obj.console_host, obj.console)
-
-        obj.vty = myconsole
         obj.interfaces = []
 
         obj.router = obj.node_type == 'dynamips'
@@ -118,7 +117,8 @@ def enumerate_nodes(gs,project_id)->NodeRepo:
         mynodes.add(obj)
     return mynodes
 
-def enumerate_links(gs,project_id, mynodes):
+
+def enumerate_links(gs, project_id, mynodes):
     in4 = 0
     liens = []
     for _link in gs.get_links(project_id):
@@ -139,8 +139,8 @@ def enumerate_links(gs,project_id, mynodes):
         lien.side_a.interfaces.append(Interface(True, lien))
         lien.side_b.interfaces.append(Interface(False, lien))
         liens.append(lien)
-        print(lien)
     return liens
+
 
 MAGIC_SVG = '<!-- fait par le script -->'
 
@@ -183,3 +183,38 @@ def display_router_ids(project: Project, nodes: List[Node]):
         project.create_drawing(
             svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}</text></svg>',
             x=x, y=y - 4, locked=True)
+
+
+def get_extra_interface_conf(router_name: str, interface_name: str):
+    try:
+        return config_custom[router_name]['interfaces'][interface_name]['extra']
+    except KeyError:
+        return ''
+
+
+def get_extra_global_conf(router_name: str):
+    try:
+        return config_custom[router_name]['extra']
+    except KeyError:
+        return ''
+
+
+def get_is_interface_disabled(router_name: str, interface_name: str) -> bool:
+    try:
+        return config_custom[router_name]['interfaces'][interface_name]['disable']
+    except KeyError:
+        return False
+
+
+def get_is_router_disabled(router_name: str):
+    try:
+        return config_custom[router_name]['disable']
+    except KeyError:
+        return False
+
+
+def get_router_id_overriden(router_name: str):
+    try:
+        return config_custom[router_name]['router_id_override']
+    except KeyError:
+        return False
