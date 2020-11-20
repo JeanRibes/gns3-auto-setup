@@ -1,4 +1,5 @@
 import time
+from string import Template
 
 import gns3fy
 
@@ -17,24 +18,12 @@ def make_config(router: Node, area: str = OSPF_AREA, ospf_process: int = OSPF_PR
     rid = get_router_id_overriden(router.name)
     if rid:
         router.router_id = rid
-    s += f"""
-ipv6 unicast-routing
-ipv6 cef
-ip cef
-ipv6 router ospf {ospf_process}
-    redistribute connected
-    router-id {router.router_id}
-  exit
-router ospf {ospf_process}
-    redistribute connected subnets
-    router-id {router.router_id}
-  exit
-"""
+    s += Template(router_template).safe_substitute(ospf_process=ospf_process, router_id=rid)
 
     for interface in router.interfaces:
         extra_conf_int = get_extra_interface_conf(router.name, interface.get_name())
         if interface.lien.disable:
-            continue
+            continue  # on saute la config de l'interface
         if len(extra_conf_int) > 1 or interface.lien.has_extra_conf():
             s += f"""#--
 # config custom du lien {interface.lien.get_name()}, partie globale pour le routeur
@@ -46,19 +35,16 @@ int {interface.get_name()}
 """
         if get_is_interface_disabled(router.name, interface.get_name()):
             continue
-        s += f"""#--
-!
-int {interface.get_name()}
-    description connexion a l'interface {interface.reverse_int()} du routeur {interface.reverse_router().name}
-    no shut
-    ipv6 enable
-    mpls ip
-    ipv6 address {interface.get_ip6()}
-    ip address {interface.get_ip4()}
-    """
+        s += Template(interface_base_template).safe_substitute(
+            interface_name=interface.get_name(),
+            reverse_interface_name=interface.reverse_int(),
+            reverse_router_name=interface.reverse_router().name,
+            ip4=interface.get_ip4(),
+            ip6=interface.get_ip6()
+        )
         if interface.reverse_router().router:
-            s += f"ipv6 ospf {ospf_process} area {area}\n"
-            s += f"    ip ospf 1 area 0\n"
+            s += Template(interface_routing_template).safe_substitute(ospf_process=ospf_process,
+                                                                      area=area)
 
     s += f"""
 end

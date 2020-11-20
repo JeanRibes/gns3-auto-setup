@@ -11,14 +11,18 @@ config_custom = {  # permet de rajouter des paramètres personalisés
                 'extra_interface': '    no shut\n    #hi from extra int link',
                 'override_network6': '2001:100:4',
                 'override_network4': '192.168.5',
-                'disable': True,
+                'disable': False,  # désactive intégralement la configuration de l'interface associée
             },
         ],
     'routers': {
         'R5': {
             'interfaces': {
                 'f0/0': {'extra': '    arp log threshold entries 2'},
+                'f3/0': {'disable': True},
+                'f2/0': {'disable': True},
+                'f1/0': {'disable': True},
             },
+            'extra': 'router rip\n   redistribute connected\n  exit'
         },
         'R8': {  # nom (hostname) du routeur. je vais modifier la configuration du routeur R8 ici
             'disable': False,  # désactive la configuration auto de ce routeur
@@ -49,6 +53,36 @@ config_custom = {  # permet de rajouter des paramètres personalisés
     }
 }
 
+router_template = """
+ipv6 unicast-routing
+ipv6 cef
+ip cef
+ipv6 router ospf ${ospf_process}
+    redistribute connected
+    router-id $router_id
+  exit
+router ospf ${ospf_process}
+    redistribute connected subnets
+    router-id ${router_id}
+  exit
+"""
+
+# template pour toutes les interfaces
+interface_base_template = """#--
+int ${interface_name}
+    description connexion a l'interface ${reverse_interface_name} du routeur ${reverse_router_name}
+    no shut
+    ip address ${ip6}
+    mpls ip
+    ipv6 enable
+    ipv6 address ${ip4}
+"""
+
+# template ajouté aux interface de routages, i.e. connectées à un autre routeur
+interface_routing_template = """
+    ipv6 ospf ${ospf_process} area ${area}
+    ipv ospf ${ospf_process} area ${area}
+"""
 # tapez "menu m" dans le shell IOS
 main_menu = """
 menu m command 1 show ipv6 ospf neighbor

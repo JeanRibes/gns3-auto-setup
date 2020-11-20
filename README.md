@@ -101,7 +101,10 @@ Si vous voulez tous les enlever, rajoutez ``exit(0)`` après `delete_drawings(pr
 Mais si vous faites ça il faudra les supprimer à la main.
 
 ## TODO
- * [ ] avoir un fonctionnement plus proche de *templates*, plus extensible et moins forcé
+ * [ ] pouvoir tagger les routeurs & interfaces en groupes
+ * [ ] faire en sorte que l'utilisateur fournisse les templates (jinja2 ? pug ?)
+ * [ ] utiliser différents *templates* : global routeur, global interface, spécifique à un lien ou à un tag (indépendant interface/routeur)
+ * [ ] pouvoir assigner des coûts aux liens pour du Traffic engineering (et les afficher avec des dessins GNS3)
  * [ ] configurer les conteneurs Docker
  * [ ] avoir un GUI ? (mdr)
  * [ ] option pour générer juste un squelette des configs ?
