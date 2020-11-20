@@ -7,18 +7,17 @@ from util import *
 
 
 def make_config(router: Node, area: str = OSPF_AREA, ospf_process: int = OSPF_PROCESS) -> str:
-    s = main_menu
-    s += f"""#--
+    s = f"""###### config pour {router.name} ######
+{main_menu}
+#--
 {get_extra_global_conf(router.name)}
-end
-conf t
 """
     if get_is_router_disabled(router.name):
         return "# configuration automatique desactivee par l'utilisateur"
     rid = get_router_id_overriden(router.name)
     if rid:
         router.router_id = rid
-    s += f"""###### config pour {router.name} ######
+    s += f"""
 ipv6 unicast-routing
 ipv6 cef
 ip cef
@@ -30,21 +29,25 @@ router ospf {ospf_process}
     redistribute connected subnets
     router-id {router.router_id}
   exit
-#--
 """
 
     for interface in router.interfaces:
         extra_conf_int = get_extra_interface_conf(router.name, interface.get_name())
-        if len(extra_conf_int) > 1:
+        if interface.lien.disable:
+            continue
+        if len(extra_conf_int) > 1 or interface.lien.has_extra_conf():
             s += f"""#--
+# config custom du lien {interface.lien.get_name()}, partie globale pour le routeur
+{interface.lien.extra_conf_router}
 int {interface.get_name()}
+# config custom du lien {interface.lien.get_name()}, partie specifique a cette interface
 {extra_conf_int}
-end
-conf terminal
+{interface.lien.extra_conf_interface}
 """
         if get_is_interface_disabled(router.name, interface.get_name()):
             continue
         s += f"""#--
+!
 int {interface.get_name()}
     description connexion a l'interface {interface.reverse_int()} du routeur {interface.reverse_router().name}
     no shut
@@ -55,7 +58,7 @@ int {interface.get_name()}
     """
         if interface.reverse_router().router:
             s += f"ipv6 ospf {ospf_process} area {area}\n"
-            s += f"ip ospf 1 area 0\n"
+            s += f"    ip ospf 1 area 0\n"
 
     s += f"""
 end
@@ -92,8 +95,8 @@ if __name__ == '__main__':
     # énumération & résolution des liens puis assignation des réseaux
     liens = enumerate_links(gs, project_id, mynodes)
 
-    # print(make_config(mynodes.get_by_name('R5')))
-    # exit(0)
+    print(make_config(mynodes.get_by_name('R5')))
+    exit(0)
 
     # applique les configs sur tous les routeurs
     for node in mynodes.values():

@@ -41,6 +41,7 @@ class Lien:
         self.link_id = lid
 
     link_id: str
+    disable = False
 
     side_a: Node
     ip6_a: str  # # 2001:0:dead:beef::10
@@ -53,7 +54,13 @@ class Lien:
     ip6_b: str  # 2001:0:dead:beef::11
     side_b: Node
 
-    def __str__(self):
+    extra_conf_router: str
+    extra_conf_interface: str
+
+    def get_name(self):
+        return f"{self.side_a.name}<-->{self.side_b.name}"
+
+    def __str__(self) -> str:
         return f"{self.side_a.name}: {self.interface_a} [{self.get_ip6a()}] <-> [{self.get_ip6b()}] {self.interface_b}:{self.side_b.name}"
 
     def get_ip6a(self):
@@ -61,6 +68,9 @@ class Lien:
 
     def get_ip6b(self):
         return f"{self.network6}::11/64"
+
+    def has_extra_conf(self) -> bool:
+        return len(self.extra_conf_router) > 1 or len(self.extra_conf_interface)
 
 
 class Interface:
@@ -102,6 +112,17 @@ class Interface:
             return self.lien.side_b
 
 
+def resolve_link_config(router_a_name: str, router_b_name: str) -> dict:
+    try:
+        for link in config_custom['links']:
+            if link['name'] == (router_a_name + '<-->' + router_b_name) or link['name'] == (
+                    router_b_name + '<-->' + router_a_name):
+                return link
+        return None
+    except KeyError:
+        return None
+
+
 def enumerate_nodes(gs, project_id) -> NodeRepo:
     mynodes = NodeRepo()
     router_i = 1
@@ -135,6 +156,25 @@ def enumerate_links(gs, project_id, mynodes):
         lien.network6 = '2001:' + link.link_id.split('-')[3]
         lien.network4 = f"10.10.{in4}"
         in4 += 1
+
+        # assigne la config spécifique aux deux parties de ce lien réseau
+        link_config = resolve_link_config(lien.side_a.name, lien.side_b.name)
+        try:
+            lien.disable = link_config['disable']
+        except:
+            pass
+        try:
+            if link_config.get('override_network6'):
+                if len(link_config['override_network6']) > 0:
+                    lien.network6 = link_config['override_network6']
+            if link_config.get('override_network4'):
+                if len(link_config['override_network4']) > 0:
+                    lien.network4 = link_config['override_network4']
+            lien.extra_conf_router = link_config['extra_router']
+            lien.extra_conf_interface = link_config['extra_interface']
+        except (KeyError, TypeError, AttributeError) as e:
+            lien.extra_conf_router = ""
+            lien.extra_conf_interface = ""
 
         lien.side_a.interfaces.append(Interface(True, lien))
         lien.side_b.interfaces.append(Interface(False, lien))
@@ -187,34 +227,34 @@ def display_router_ids(project: Project, nodes: List[Node]):
 
 def get_extra_interface_conf(router_name: str, interface_name: str):
     try:
-        return config_custom[router_name]['interfaces'][interface_name]['extra']
+        return config_custom['routers'][router_name]['interfaces'][interface_name]['extra']
     except KeyError:
         return ''
 
 
 def get_extra_global_conf(router_name: str):
     try:
-        return config_custom[router_name]['extra']
+        return config_custom['routers'][router_name]['extra']
     except KeyError:
         return ''
 
 
 def get_is_interface_disabled(router_name: str, interface_name: str) -> bool:
     try:
-        return config_custom[router_name]['interfaces'][interface_name]['disable']
+        return config_custom['routers'][router_name]['interfaces'][interface_name]['disable']
     except KeyError:
         return False
 
 
 def get_is_router_disabled(router_name: str):
     try:
-        return config_custom[router_name]['disable']
+        return config_custom['routers'][router_name]['disable']
     except KeyError:
         return False
 
 
 def get_router_id_overriden(router_name: str):
     try:
-        return config_custom[router_name]['router_id_override']
+        return config_custom['routers'][router_name]['router_id_override']
     except KeyError:
         return False
