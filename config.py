@@ -2,11 +2,30 @@ GNS3_PROJECT_NAME = "auto"  # le nom de votre projet. "auto" utilise celui qui e
 OSPF_AREA = '0'
 OSPF_PROCESS = 1
 
-config_custom = {  # permet de rajouter des paramètres personalisés
+config_custom = {  # permet de rajouter des paramètres personalisés et les templates
+    # on peut assigner une classe à des routeurs, interfaces ou même liens
+    'classes': [
+        {
+            'name': 'routeur-coeur',
+            'template': 'router bgp {{router_id}}',
+            'values': {
+                'a': 1,
+                'b': 'boii',
+            }
+        }, {
+            'name': 'interface-out',
+            'template': 'ip address {{interface.ip4}}'
+        },
+        {
+            'name': 'fibre',
+            'template': 'nope',
+        }
+    ],
     'links':
         [
             {
                 'name': 'R1<-->R5',  # on peut aussi marquer 'R5<-->R1'
+                'classe': 'fibre',
                 'extra_router': """no ipv6 router rip""",
                 'extra_interface': '    no shut\n    #hi from extra int link',
                 'override_network6': '2001:100:4',
@@ -16,6 +35,7 @@ config_custom = {  # permet de rajouter des paramètres personalisés
         ],
     'routers': {
         'R5': {
+            'classe': 'routeur-coeur',
             'interfaces': {
                 'f0/0': {'extra': '    arp log threshold entries 2'},
                 'f3/0': {'disable': True},
