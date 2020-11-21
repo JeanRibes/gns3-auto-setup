@@ -4,38 +4,42 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
     'templates': {  # définit les templates de base appliqués à tous les routeurs
         'router':  # template pour un routeur, requis
             """#### configuration de {{router.name}}
-            ipv6 unicast-routing
+ipv6 unicast-routing
             
-            # rendered_interfaces contient la configuration des interfaces, déjà générée
-            {% for interface in rendered_interfaces %}
-            {{interface}}
-            #--
-            {% endfor %}
+# rendered_interfaces contient la configuration des interfaces, déjà générée
+{% for interface in rendered_interfaces %}
+{{interface}}
+#--
+{% endfor %}
             
-            # les templates provenant des classes seront remplacés à la 2e passe de templating
-            {% for classe in router.resolved_classes %}
-            # classe {{classe.name}}
-            {{classe.template}}
-            #--
-            # fin classe {{classe.name}}
-            {% endfor %}
+# les templates provenant des classes seront remplacés à la 2e passe de templating
+{% for classe in router.resolved_classes %}
+# classe {{classe.name}}
+{{classe.template}}
+#--
+# fin classe {{classe.name}}
+{% endfor %}
             
-            {% if router.disable %}# ce routeur ne doit pas être configuré{% endif %}
-            # fin de la configuration de {{router.name}}
-            """,  #
+{% if router.disable %}# ce routeur ne doit pas être configuré{% endif %}
+# fin de la configuration de {{router.name}}
+""",  #
         #
         'interface':  # requis
-            """interface {{interface.name}}
-                {% if interface.disable %}# cette interface ne doit pas être configuré{% endif %}
-                no shutdown
-                ipv6 enable
-                ipv6 address {{interface.ip_network6}}::{{interface.ip_end6}}/64
-            {% for classe in interface.resolved_classes %}
-            {{classe.template}}
-            {% endfor %}
-            {{ interface.interface_template }}
-            exit
-            # fin interface {{interface.name}}"""
+            """
+interface {{interface.name}}
+{% if interface.disable %}# cette interface ne doit pas être configuré{% endif %}
+{% if interface.peer %}
+    description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}
+{% endif %}
+    no shutdown
+    ipv6 enable
+    ipv6 address {{interface.ip_network6}}::{{interface.ip_end6}}/64
+    {% for classe in interface.resolved_classes %}
+    {{classe.template}}
+    {% endfor %}
+    {{ interface.interface_template }}
+  exit
+# fin interface {{interface.name}}"""
 
     },
     'default_router_classes': ['ospf6-router', 'ospf4-router', 'bgp-router'],
@@ -132,7 +136,10 @@ exit
                 'name': 'R1<-->R3',
                 'interface_classes': [],
                 'router_classes': [],
-                'template': '# oh que oui'
+                'template': '# oh que oui {{interface.oui}}',
+                'interface_values': {
+                    'oui': 'oh non'
+                }
             }
         ],
     'routers': {
