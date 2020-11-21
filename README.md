@@ -40,7 +40,7 @@ nouvelle classe qui définit la valeur du coût et appliquer cette classe à plu
 Avec ``python3 main.py -g ``, vous pouvez exécuter une commande sur tous les routeurs Cisco !
 # Installation
 ```
-pip3 install gns3fy==0.7.1
+pip3 install gns3fy==0.7.1 Jinja2==2.11.2
 ```
 * créez un nouveau projet vide dans GNS3
 * allez dans *Edit > Preferences > Server > Main Server*
@@ -119,7 +119,9 @@ Si c'est trop agaçant vous pouvez relancer le programme avec ``--delete-labels`
 
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
-
+### Crédits
+ * Le package [gns3fy](https://github.com/davidban77/gns3fy) de David Flores
+ * Helm pour l'inspiration des templates/values
 # Format de données
 
 Les données de configuration apparaissent dans le dossier `ouput` au format JSON.
