@@ -27,7 +27,7 @@ def enumerate_routers(gs, project_id):
 
 
 def enumerate_links(gs, project_id, routers: Routers)->List[Lien]:
-    in4 = 0
+    in4 = 2887680000
     liens = []
     for _link in gs.get_links(project_id):
         link = Link(connector=gs, project_id=project_id, link_id=_link['link_id'])
@@ -46,12 +46,12 @@ def enumerate_links(gs, project_id, routers: Routers)->List[Lien]:
         lien = Lien(
             uid=link.link_id,
             network6='2001:' + link.link_id.split('-')[3],
-            network4=f"10.10.{in4}",
+            network4=IPv4Address(in4),
             side_a=router_side_a, side_b=router_side_b,
             int_a=link.nodes[0]['label']['text'],
             int_b=link.nodes[1]['label']['text'],
         )
-        in4 += 1
+        in4 += 4
         # print("enumerating link " + str(lien))
 
         side_a_interface = Interface(name=link.nodes[0]['label']['text'], lien=lien, side=SIDE_A)
@@ -66,6 +66,9 @@ def enumerate_links(gs, project_id, routers: Routers)->List[Lien]:
         router_side_b.interfaces.append(side_b_interface)
 
         liens.append(lien)
+    for lien in liens:
+        print(f'{lien.side_a.name}>    {lien.network4}    <{lien.side_b.name}')
+        #print(f'{lien.interface_a.get_ip4()} {lien.side_a.name}>    {lien.network4}    <{lien.side_b.name} {lien.interface_b.get_ip4()}')
     return liens
 
 
@@ -96,10 +99,9 @@ def gen_tree(router: Router) -> dict:
             ifs.append({
                 'name': interface.name,
                 'lien': interface.lien.name,
-                'ip_network4': interface.lien.network4,
+                'ip_network4': interface.get_ip4(),
                 'ip_network6': interface.lien.network6,
                 'ip_end6': interface.end6(),
-                'ip_end4':interface.end6(),
             })
         else:
             ifs.append({
@@ -108,7 +110,6 @@ def gen_tree(router: Router) -> dict:
                 'ip_network4': 'configurez manuellement',
                 'ip_network6': 'configurez manuellement',
                 'ip_end6': '1',
-                'ip_end4': '1',
             })
     return {
         'name': router.name,
@@ -248,7 +249,7 @@ def resolve_router_config(router: Router):
 
             # re-mapping
             interface.lien.network6 = int_conf['ip_network6']
-            interface.lien.network4 = int_conf['ip_network4']
+            #interface.lien.network4 = int_conf['ip_network4']
         conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
     conf['template'] = template
 
@@ -262,7 +263,6 @@ def resolve_router_config(router: Router):
 
 
 def generate_conf(conf: dict) -> str:
-    print(json.dumps(conf, indent=4, sort_keys=True))
     rendered_interfaces = []
     for interface in conf['interfaces']:
         pass1 = Template(interface['template']).render(interface=interface, router=conf)
@@ -301,9 +301,13 @@ class Console:
 def configure_router(router: Router) -> Console:
     conf = generate_conf(resolve_router_config(router))
     console = Console.from_router(router)
+    print(f'configuration de  {router.name}')
     for partie in conf.split('#--'):
         console.write_conf(partie)
         time.sleep(0.5)
+        print('.',end='')
+    time.sleep(1)
+    print(f"{router.name} configuré !")
     return console
 
 def delete_drawings(project: Project):
@@ -317,7 +321,7 @@ def delete_drawings(project: Project):
 def display_tracked_subnets(project: Project, liens:List[Lien]):
     # affiche les subnets entre routeurs
     for lien in liens:
-        text = f"{lien.network4}.0\n{lien.network6}::"
+        text = f"{lien.network4}/30\n{lien.network6}::"
         x = (lien.side_a.x + lien.side_b.x) // 2 - 25
         y = (lien.side_a.y + lien.side_b.y) // 2
         project.create_drawing(
@@ -344,6 +348,7 @@ def display_router_ids(project: Project, routers: Routers):
 if __name__ == '__main__':
     routers, gs, project_id, liens = get_gns_conf()
     show_topology(routers)
+
     for router in routers.values():
         # print(generate_conf(resolve_router_config(router)))
         configure_router(router)

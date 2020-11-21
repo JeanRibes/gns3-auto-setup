@@ -59,7 +59,7 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
             'name': 'ospf4-interface',
             'type': 'interface',
             'template': """ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}
-    ip address {{interface.ip_network4}}.{{interface.ip_end4}} 255.255.255.0
+    ip address {{interface.ip_network4}}
             """
         },
         {

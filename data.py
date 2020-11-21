@@ -1,5 +1,6 @@
 from collections import namedtuple
 from dataclasses import dataclass
+from ipaddress import IPv4Address
 from typing import List, Optional, Union
 
 from gns3fy import Node, Link
@@ -45,7 +46,7 @@ class Routers(dict):
 class Lien:
     uid: str
 
-    network4: str  # 10.2.0
+    network4: IPv4Address  # 10.2.0
     network6: str  # 2201:beef
 
     side_a: Router
@@ -121,7 +122,8 @@ class Interface:
         return str(ord(self.side) - 96)
 
     def get_ip4(self):
-        return f"{self.lien.network4}.{ord(self.side) - 96} 255.255.255.0"
+        # on fait de la magie avec les IPv4 pour utiliser des sous-réseaux de 2 hôtes
+        return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)} 255.255.255.252"
 
 
 router = {
