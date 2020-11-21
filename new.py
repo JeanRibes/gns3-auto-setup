@@ -1,12 +1,14 @@
 import json
 from copy import deepcopy
 from ipaddress import IPv4Address
+from typing import Set, Iterable
 
 from gns3fy import gns3fy, Node, Link
 
 from config import config_custom
 from data import *
 from jinja2 import Template
+
 
 def enumerate_routers(gs, project_id):
     routers = Routers()
@@ -96,24 +98,59 @@ def find(liste: list, k, v):
     return list(filter(lambda e: e[k] == v, liste))[0]
 
 
-def recurse_class(classname) -> List[dict]:
-    classe_parent = find(config_custom['classes'], 'name', classname)
-    classes = [classe_parent]
-    for classe in safe_get_value(classe_parent, [], 'classes'):
-        try:
-            classes.append(find(config_custom['classes'], 'name', classe))
-        except:
-            pass
-    return classes
+# def recurse_class(classname, type) -> List[dict]:
+#    classe_parent = find(config_custom['classes'], 'name', classname)
+#    classes = [classe_parent]
+#    for classe in safe_get_value(classe_parent, [], 'classes'):
+#        try:
+#            f_c = find(config_custom['classes'], 'name', classe)
+#            classes.append(f_c)
+#            if f_c['type'] != type:
+#                print('Attention, mauvais type de classe')
+#        except:
+#            pass
+#    return classes
 
 
-def resolve_classes(classe_names: List[str]) -> List[dict]:
+# def recurse_classnames(classname: str, type: str) -> Set[str]:
+#    l1 = set(classname)
+#    for classe in config_custom['classes']:
+#        l1.update(safe_get_value(classe, [], 'classes'))
+#    l2 = set()
+#    for classe in l1:
+#        l2.update(recurse_classnames(classe, type))
+#    return l1 | l2
+
+
+def r2(classnames: Set[str]) -> Set[str]:
+    """
+    Normalement il peut pas faire de RecursionError
+    :param classnames: la liste des classes à étendre récursivement
+    :return: toutes les classes découvertes+initiales
+    """
+    if len(classnames) == 0:
+        return set()
+    discovered = set()
+    for classe in config_custom['classes']:
+        if classe['name'] in classnames:
+            discovered.update(safe_get_value(classe, [], 'classes'))
+    initial = set(classnames)
+    nouveaux = discovered - initial
+    if len(discovered) == 0 or len(nouveaux) == 0:
+        return initial | discovered
+    missing = r2(nouveaux)
+    return initial | discovered | missing
+
+
+def resolve_classes(classe_names: List[str], type) -> List[dict]:
+    all_class_names = r2(set(classe_names))
     l = []
-    for classe_name in classe_names:
-        l.extend(recurse_class(classe_name))
-    l = deepcopy(l)
-    for classe in l:
-        classe.pop('classes', None)
+    for classe_name in all_class_names:
+        classe_obj: dict = find(config_custom['classes'], 'name', classe_name)
+        if classe_obj['type'] == type:
+            classe_obj = deepcopy(classe_obj)
+            classe_obj.pop('classes', None)
+            l.append(classe_obj)
     return l
 
 
@@ -123,7 +160,7 @@ def safe_get_value(data: dict, default, *args):
         for path in args:
             obj = obj[path]
         return obj
-    except KeyError:
+    except (KeyError, TypeError):
         return default
     except Exception as e:
         raise e
@@ -134,6 +171,13 @@ def apply_values(classes: List[dict], obj: dict):
     # rajoute les variables définies dans les classes
     for classe in classes:
         obj.update(safe_get_value(classe, {}, 'values'))
+
+
+def add_templates(classes: List[dict]) -> str:
+    t = ''
+    for classe in classes:
+        t += safe_get_value(classe, '', 'template')
+    return t
 
 
 def resolve_link_config(router_a_name: str, router_b_name: str) -> dict:
@@ -148,30 +192,42 @@ def resolve_link_config(router_a_name: str, router_b_name: str) -> dict:
 
 
 def resolve_router_config(router: Router):
+    """
+    construit la config et fait le templating des templates (sans appliquer les valeurs)
+    :param router:
+    :return:
+    """
     conf = gen_tree(router)
-    template = f"#configuration du routeur {router.name}"
-    if config_custom['routers'].get(router.name):
-        cc = config_custom['routers'][router.name]
-        classes = resolve_classes(safe_get_value(cc, [], 'classes'))
-        conf['disable'] = safe_get_value(cc, False, 'disable')
-        apply_values(classes, conf)
+    template = safe_get_value(config_custom, '', 'templates', 'router')
+    cc = safe_get_value(config_custom, 'routers', router.name)
+    classes = resolve_classes(safe_get_value(cc, [], 'classes')+config_custom['default_router_classes'], 'router')
+    apply_values(classes, conf)
+    conf['resolved_classes'] = classes
 
-        for interface in router.interfaces:
-            int_conf = find(conf['interfaces'], 'name', interface.name)
-            user_def_interface = safe_get_value(cc, {}, 'interfaces', interface.name)
-            if_classes = resolve_classes(safe_get_value(user_def_interface, [], 'classes'))
-            apply_values(if_classes, int_conf)
+    conf['disable'] = safe_get_value(cc, False, 'disable')
 
-            lien = resolve_link_config(router.name, interface.peer.name)
-            if lien is not None:
-                link_classes = resolve_classes(safe_get_value(lien, [], 'interface_classes'))
-                apply_values(link_classes, int_conf)
-
-                router_classes = resolve_classes(safe_get_value(lien, [], 'router_classes'))
-                apply_values(router_classes, conf)
-                template += '\n' + safe_get_value(lien, '', 'template')
-            template += '\n'+safe_get_value(user_def_interface,'','template')
-        template += '\n'+safe_get_value(cc,'','template')
+    for interface in router.interfaces:
+        int_conf = find(conf['interfaces'], 'name', interface.name)  # la config auto-généré
+        user_def_interface = safe_get_value(cc, {}, 'interfaces', interface.name)  # la config utilisateur
+        int_conf['disable'] = safe_get_value(user_def_interface, False, 'disable')
+        if_classes = resolve_classes(
+            safe_get_value(user_def_interface, [], 'classes') + config_custom['default_interface_classes'], 'interface')
+        apply_values(if_classes, int_conf)
+        int_conf['resolved_classes'] = if_classes
+        int_conf['template'] = safe_get_value(config_custom, '', 'templates', 'interface')
+        int_conf['interface_template'] = safe_get_value(user_def_interface, '', 'template')
+        lien = resolve_link_config(router.name, interface.peer.name)
+        if lien is not None:
+            link_classes = resolve_classes(safe_get_value(lien, [], 'interface_classes'), 'interface')
+            apply_values(link_classes, int_conf)
+            int_conf['resolved_classes'] += link_classes
+            router_classes = resolve_classes(safe_get_value(lien, [], 'router_classes'), 'router')
+            apply_values(router_classes, conf)
+            conf['resolved_classes'] += router_classes
+            int_conf['interface_template'] += safe_get_value(lien, '', 'template')
+        else:
+            print(f'pas de lien pour {interface.lien}')
+        conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
     conf['template'] = template
 
     return conf
@@ -179,13 +235,31 @@ def resolve_router_config(router: Router):
     #    print("ATTENTION: la configuration")
     #    return conf
 
-def generate_conf(conf:dict)->str:
-    return Template(conf['template']).render(conf)
+
+def generate_conf(conf: dict) -> str:
+    print(json.dumps(conf, indent=4, sort_keys=True))
+    rendered_interfaces = []
+    for interface in conf['interfaces']:
+        pass1 = Template(interface['template']).render(interface=interface)
+        rendered_interfaces.append(Template(pass1).render(interface=interface))
+
+    # print(rendered_interfaces)
+    # print('================')
+    # print(conf['template'])
+    # print('==========')
+
+    t1 = Template(conf['template']).render(router=conf, rendered_interfaces=rendered_interfaces)
+    # print('----------------')
+    # print(t1)
+    # print('----------------')
+    return Template(t1).render(router=conf, ospf_process=1)
+
 
 if __name__ == '__main__':
     # print(safe_get_value(config_custom, 'fail', 'routers', 'R8', 'interfaces','f0/0','disable'))
     routers, gs, project_id, liens = get_gns_conf()
-    r1: Router = routers.get('R2')
-
+    r1: Router = routers.get('R3')
     # print(json.dumps(recurse_class('routeur-coeur'), indent=4, sort_keys=True))
-    print(generate_conf(resolve_router_config(r1)))
+    a = generate_conf(resolve_router_config(r1))
+    for router in routers.values():
+        print(generate_conf(resolve_router_config(router)))
