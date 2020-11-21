@@ -31,55 +31,7 @@ Le fichier `config.py` vous permet de rajouter votre grain de sel.
 
 Pour trouver les noms des interfaces, activez *View > Show/Hide interfaces labels*
 ```python
-OSPF_AREA = '0'
-OSPF_PROCESS = 1
 
-config_custom = {  # permet de rajouter des paramètres personalisés
-    'links':
-        [
-            {
-                'name': 'R1<-->R5',  # on peut aussi marquer 'R5<-->R1'
-                'extra_router': """no ipv6 router rip""",
-                'extra_interface': '    no shut\n    #hi from extra int link',
-                'override_network6': '2001:100:4',
-                'override_network4': '192.168.5',
-                'disable':True,
-            },
-        ],
-    'routers': {
-        'R5': {
-            'interfaces': {
-                'f0/0': {'extra': '    arp log threshold entries 2'},
-            },
-        },
-        'R8': {  # nom (hostname) du routeur. je vais modifier la configuration du routeur R8 ici
-            'disable': False,  # désactive la configuration auto de ce routeur
-            'router_id_override': '8.8.0.8',  # pour changer les router-id à la main
-            'extra': "ipv6 router rip OUI\nredistribute connected",
-            # pour rajouter une configuration globale au routeur.
-            # mettre '\n' pour les sauts de lignes
-            'interfaces': {  # modification de certaines interfaces
-                'f2/0':  # attention c'est le nom "GNS3" de l'interface (aussi affiché dans le panneau "Topology Summary" à droite
-                    {
-                        'disable': False,  # désactive la configuration automatique de cette interface
-                        # extra permet de rajouter de la config dans le contexte d'une interface même si la conf auto est désactivée
-                        'extra': "ipv6 address 2001:0:8::1/64\nip address 10.8.0.1 255.255.255.0 secondary"
-                    },
-                'f0/0': {
-                    'disable': True,
-                    # pour sauter des lignes on peut mettre des '\n' mais aussi passer en mode triple-guillemets (verbatim)
-                    'extra': """    no shutdown
-  description moi utilisateur, je configure cette interface entierement a la main
-  mpls bgp forwarding
-  ipv6 address autoconfig"""
-                }
-            }
-        },
-        'R2': {
-            'disable': True
-        }
-    }
-}
 
 ```
 
@@ -102,24 +54,12 @@ Mais si vous faites ça il faudra les supprimer à la main.
 
 ## TODO
  * [ ] pouvoir tagger les routeurs & interfaces en groupes
- * [ ] faire en sorte que l'utilisateur fournisse les templates (jinja2 ? pug ?)
+ * [x] faire en sorte que l'utilisateur fournisse les templates (jinja2 ? pug ?)
  * [ ] pouvoir assigner des coûts aux liens pour du Traffic engineering (et les afficher avec des dessins GNS3)
  * [ ] configurer les conteneurs Docker
  * [ ] avoir un GUI ? (mdr)
  * [ ] option pour générer juste un squelette des configs ?
  * [ ] générer des adresses IPv4 qui font des réseaux en /30 pour être + économe
-```
-on itère GNS3 pour trouver les routeurs et on construit un JSON. on ajoutera à ce json les data utilisateur
-on itère la conf utilisateur pour résoudre quels templates vont sur quels routeurs & interfaces ...
-on construit l'objet de chaque routeur & interface en stockant ses valeurs et ses templates
-on concatène les templates (avec un template =D )
-on fait le rendu des templates
-il faudrait faire deux passes de rendu, pour résoudre les templates user et ensuite les appliquer
 
-dans une boucle qui itère les Router, faire
-    résoudre la config utilisateur
-    générer le template
-    appliquer la conf à distance
-```
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
