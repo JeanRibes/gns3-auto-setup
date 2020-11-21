@@ -38,7 +38,8 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
             # fin interface {{interface.name}}"""
 
     },
-    'default_router_classes': ['ospf6-router', 'ospf4-router'],  # des classes qui seront appliquées à tous les routeurs
+    'default_router_classes': ['ospf6-router', 'ospf4-router', 'bgp-router'],
+    # des classes qui seront appliquées à tous les routeurs
     'default_interface_classes': [],
     # on peut assigner une classe à des routeurs, interfaces ou même liens
     'classes': [
@@ -74,7 +75,7 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
                 'ospf4_area': 0,
             },
             'interface_classes': ['ospf4-interface'],
-            'classes':['mpls-router']
+            'classes': ['mpls-router']
         },
         {
             'name': 'ospf6-interface',
@@ -91,6 +92,38 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
             'type': 'router',
             'template': 'ip cef\nipv6 cef',
             'interface_classes': ['mpls-interface']
+        },
+        {
+            'name': 'bgp-router',
+            'type': 'router',
+            'template': """
+router bgp {{router.asn}}
+bgp router-id {{router.router_id}}
+{% for interface in router.interfaces %}
+{% if interface.peer %}
+neighbor {{interface.peer.ip4}} remote-as {{interface.peer.asn}}
+neighbor {{interface.peer.ip4}} activate
+neighbor {{interface.peer.ip6}} remote-as {{interface.peer.asn}}
+neighbor {{interface.peer.ip6}} activate
+address-family ipv4 unicast
+    redistribute connected
+exit-address-family
+address-family ipv6 unicast
+    redistribute connected
+exit-address-family
+{% endif %}
+{% endfor %}
+exit
+            """,
+            'values': {
+                'announce_internal': True,
+            }
+        },
+        {
+            'name': 'ospf6-cost',
+            'type': 'interface',
+            # attention il faudra définie cette variable dans les 'values' des interfaces de chque routeur sur lequel on l'active
+            'template': 'ipv6 ospf cost {{interface.ospf6_cost}}'
         }
     ],
     'links':
@@ -104,7 +137,7 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
         ],
     'routers': {
         'R1': {
-            'disable':False,
+            'disable': False,
             'classes': ['ospf6-router'],
             'template': 'no ip router ospf\n',
             'interfaces': {
@@ -115,7 +148,13 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
                         'ip_end6': '101',
                     }
                 },
-                'f5/0': {'disable': True},
+                'f5/0': {
+                    'disable': False,
+                    'classes': ['ospf6-cost'],
+                    'values': {
+                        'ospf6_cost': 5,
+                    }
+                },
                 # 'f2/0': {'disable': True},
                 'f1/0': {
                     'template': 'ip address 192.168.0.1 255.255.255.0',
@@ -133,11 +172,27 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
             'disable': True,
             'template': 'router ospf 1\n  router-id {{router_id}}',
         },
+        'R3': {
+            'interfaces': {
+                'f3/0': {
+                    'classes': ['ospf6-cost'],
+                    'values': {
+                        'ospf6_cost': 10,
+                    }
+                }
+            }
+        }
     }
 }
 
 # tapez "menu m" dans le shell IOS
 main_menu = """
+menu ospf command 1 show ipv6 ospf interface brief
+menu ospf command 2 show ipv6 ospf neighbor
+menu ospf command 3 sh ipv6 route ospf | include OE2
+menu ospf command 4 show ipv6 ospf database
+menu ospf command 5 
+
 menu m command 1 show ipv6 ospf neighbor
 menu m command 2 sh ipv6 route ospf | include OE2
 menu m command 3 show mpls forwarding-table

@@ -24,7 +24,7 @@ pip3 install gns3fy==0.7.1
 * Attendez que les routeurs démarrent
 * Lancez le script
 * Attendez que les routeurs se découvrent et propagent leurs routes
-Et vous avez votre réseau OSPF sans effort !
+Et vous avez votre réseau OSPF, BGP, mpls sans effort !
 
 ## Personaliser des parties de la configuration
 Le fichier `config.py` vous permet de rajouter votre grain de sel.
@@ -52,6 +52,9 @@ Si vous voulez tous les enlever, rajoutez ``exit(0)`` après `delete_drawings(pr
 
 Mais si vous faites ça il faudra les supprimer à la main.
 
+### J'arrive plus à cliquer sur les routeurs pour accéder à la console !
+Utilisez le bouton *Control > Console connect to all nodes*
+
 ## TODO
  * [ ] pouvoir tagger les routeurs & interfaces en groupes
  * [x] faire en sorte que l'utilisateur fournisse les templates (jinja2 ? pug ?)
@@ -59,7 +62,7 @@ Mais si vous faites ça il faudra les supprimer à la main.
  * [ ] configurer les conteneurs Docker
  * [ ] avoir un GUI ? (mdr)
  * [ ] option pour générer juste un squelette des configs ?
- * [ ] générer des adresses IPv4 qui font des réseaux en /30 pour être + économe
+ * [x] générer des adresses IPv4 qui font des réseaux en /30 pour être + économe
 
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr

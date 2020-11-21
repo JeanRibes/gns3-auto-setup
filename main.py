@@ -13,20 +13,23 @@ from jinja2 import Template
 
 MAGIC_SVG = '<!-- fait par le script -->'
 
+
 def enumerate_routers(gs, project_id):
     routers = Routers()
 
     router_i = 1
+    asn = 101
     for node in gs.get_nodes(project_id):
         obj = Node(project_id=project_id, node_id=node['node_id'], connector=gs)
         obj.get()
         if obj.node_type == 'dynamips':
-            routers.add(Router.from_node(obj, str(IPv4Address(router_i))))
+            routers.add(Router.from_node(obj, str(IPv4Address(router_i)), asn=asn))
             router_i += 1
+            asn += 1
     return routers
 
 
-def enumerate_links(gs, project_id, routers: Routers)->List[Lien]:
+def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
     in4 = 2887680000
     liens = []
     for _link in gs.get_links(project_id):
@@ -35,6 +38,9 @@ def enumerate_links(gs, project_id, routers: Routers)->List[Lien]:
 
         router_side_a = routers.get_by_uid(link.nodes[0]['node_id'])
         router_side_b = routers.get_by_uid(link.nodes[1]['node_id'])
+
+        if router_side_a is None and router_side_b is None:
+            continue
 
         if router_side_b is None:
             router_side_a.interfaces.append(Interface(name=link.nodes[0]['label']['text']))
@@ -68,13 +74,14 @@ def enumerate_links(gs, project_id, routers: Routers)->List[Lien]:
         liens.append(lien)
     for lien in liens:
         print(f'{lien.side_a.name}>    {lien.network4}    <{lien.side_b.name}')
-        #print(f'{lien.interface_a.get_ip4()} {lien.side_a.name}>    {lien.network4}    <{lien.side_b.name} {lien.interface_b.get_ip4()}')
+        # print(f'{lien.interface_a.get_ip4()} {lien.side_a.name}>    {lien.network4}    <{lien.side_b.name} {lien.interface_b.get_ip4()}')
     return liens
 
 
 def get_gns_conf():
     gs = gns3fy.Gns3Connector("http://localhost:3080", user="admin")
     project_id = list(filter(lambda p: p['status'] == 'opened', gs.get_projects()))[0]['project_id']
+    print(f"Utilisation du projet GNS3 uid# {project_id}")
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
 
@@ -102,6 +109,7 @@ def gen_tree(router: Router) -> dict:
                 'ip_network4': interface.get_ip4(),
                 'ip_network6': interface.lien.network6,
                 'ip_end6': interface.end6(),
+                'uid': interface.lien.uid,
             })
         else:
             ifs.append({
@@ -114,7 +122,8 @@ def gen_tree(router: Router) -> dict:
     return {
         'name': router.name,
         'router_id': router.router_id,
-        'interfaces': ifs
+        'interfaces': ifs,
+        'asn': router.asn,
     }
 
 
@@ -223,7 +232,7 @@ def resolve_router_config(router: Router):
         if_classes = resolve_classes(
             safe_get_value(user_def_interface, [], 'classes')
             + config_custom['default_interface_classes']
-            + conf['interface_classes'] if interface.peer is not None else [] # fait en sorte
+            + conf['interface_classes'] if interface.peer is not None else []  # fait en sorte
             # de ne pas configurer de protocole de routage sur une interface de bordure
             # les interfaces externes doivent être config à la main
             , 'interface')
@@ -236,6 +245,11 @@ def resolve_router_config(router: Router):
 
         if interface.peer is not None:
             lien_custom = resolve_link_config(router.name, interface.peer.name)
+            int_conf['peer'] = {
+                'asn': interface.peer.asn,
+                'ip4': interface.peer_interface.get_ip4().split(' ')[0],  # pour virer le réseai
+                'ip6': interface.peer_interface.get_ip6().split('/')[0]
+            }
         else:
             lien_custom = None
         if lien_custom is not None:  # ajoute des configurations personalisées à l'interface depuis la config des liens
@@ -249,7 +263,7 @@ def resolve_router_config(router: Router):
 
             # re-mapping
             interface.lien.network6 = int_conf['ip_network6']
-            #interface.lien.network4 = int_conf['ip_network4']
+            # interface.lien.network4 = int_conf['ip_network4']
         conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
     conf['template'] = template
 
@@ -263,6 +277,7 @@ def resolve_router_config(router: Router):
 
 
 def generate_conf(conf: dict) -> str:
+    print(json.dumps(conf, indent=4, sort_keys=True))
     rendered_interfaces = []
     for interface in conf['interfaces']:
         pass1 = Template(interface['template']).render(interface=interface, router=conf)
@@ -305,35 +320,42 @@ def configure_router(router: Router) -> Console:
     for partie in conf.split('#--'):
         console.write_conf(partie)
         time.sleep(0.5)
-        print('.',end='')
+        print('.', end='')
     time.sleep(1)
     print(f"{router.name} configuré !")
     return console
+
 
 def delete_drawings(project: Project):
     if project.drawings is not None:
         for draw in project.drawings:
             s = draw['svg']
             if s.split('>', 1)[1].startswith(MAGIC_SVG):  # or not draw['locked']:
-                project.update_drawing(drawing_id=draw['drawing_id'], locked=False)
-                project.delete_drawing(drawing_id=draw['drawing_id'])
+                try:
+                    project.update_drawing(drawing_id=draw['drawing_id'], locked=False)
+                    project.delete_drawing(drawing_id=draw['drawing_id'])
+                except Exception as e:
+                    print(e.args)
+                    pass
 
-def display_tracked_subnets(project: Project, liens:List[Lien]):
+
+def display_tracked_subnets(project: Project, liens: List[Lien]):
     # affiche les subnets entre routeurs
     for lien in liens:
         text = f"{lien.network4}/30\n{lien.network6}::"
         x = (lien.side_a.x + lien.side_b.x) // 2 - 25
         y = (lien.side_a.y + lien.side_b.y) // 2
         project.create_drawing(
-            svg=f'<svg width="120" height="40">{MAGIC_SVG}<rect width="120" height="40" fill="#ffffff" fill-opacity="1.0" stroke-width="2" stroke="#000000"/></svg>',
+            svg=f'<svg width="125" height="40">{MAGIC_SVG}<rect width="125" height="40" fill="#ffffff" fill-opacity="1.0" stroke-width="2" stroke="#000000"/></svg>',
             x=x, y=y, z=1, locked=True)
         project.create_drawing(
             svg=f'<svg width="39" height="30">{MAGIC_SVG}<text font-family="TypeWriter" font-size="10.0" font-weight="bold" fill="#346c59" stroke="#afafe1" stroke-width="100" fill-opacity="1.0">{text}\n</text>'
                 + '</svg>',
             x=x, y=y, z=100, locked=True)
 
+
 def display_router_ids(project: Project, routers: Routers):
-    # affiche les router-ids
+    # affiche les router-ids et les ASN
     for node in routers.values():
         x = node.x
         y = node.y + 10
@@ -341,9 +363,32 @@ def display_router_ids(project: Project, routers: Routers):
             svg=f'<svg width="60" height="15">{MAGIC_SVG}<rect width="60" height="15" fill="#ffffff" fill-opacity="1.0"/></svg>',
             x=x, y=y, locked=True)
         project.create_drawing(
-            svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}</text></svg>',
+            svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}\n   {node.asn}</text></svg>',
             x=x, y=y - 4, locked=True)
 
+def display_costs(project: Project, routers: Routers):
+    for router in routers.values():
+        conf = resolve_router_config(router)
+        for intf in conf['interfaces']:
+            try:
+                cost = intf['ospf6_cost']
+                for ri in router.interfaces:
+                    ro_int : Interface = ri
+                    if ro_int.name == intf['name']:
+                        peer = ro_int.peer
+                x = int((router.x*1.5 + peer.x*0.5)/2)
+                y = int((router.y*1.5 + peer.y*0.5)/2)
+                project.create_drawing(
+                    svg=f'<svg width="80" height="35">{MAGIC_SVG}<rect width="80" height="35" fill="#000000" fill-opacity="1.0"/></svg>',
+                    x=x+1, y=y+5, locked=True)
+                project.create_drawing(
+                    svg=f'<svg width=\"39\" height=\"30\"><!-- fait par le script --><text font-family=\"TypeWriter\" font-size=\"10.0\" font-weight=\"bold\" fill=\"#ffffff\" stroke=\"#afafe1\" stroke-width=\"100\" fill-opacity=\"1.0\">ospf6_cost\n  {cost}</text></svg>',
+                   # svg=f'<svg width="100" height="15">{MAGIC_SVG}<text text font-family="TypeWriter" font-size="10.0" font-weight="bold" fill="#ffffff" stroke="#afafe1" stroke-width="100" fill-opacity="1.0">ospf6_cost\n{cost}</text></svg>',
+                    x=x, y=y, locked=True)
+            except KeyError:
+                continue
+            except Exception as e:
+                raise e
 
 if __name__ == '__main__':
     routers, gs, project_id, liens = get_gns_conf()
@@ -357,4 +402,5 @@ if __name__ == '__main__':
     project.get()
     delete_drawings(project)
     display_tracked_subnets(project, liens)
-    display_router_ids(project,routers)
+    display_router_ids(project, routers)
+    display_costs(project,routers)

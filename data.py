@@ -13,6 +13,7 @@ class Router:
     y: int
     uid: str
     router_id: str
+    asn: int
 
     console_host: str
     console_port: int
@@ -21,11 +22,11 @@ class Router:
     interfaces: list
 
     @staticmethod
-    def from_node(node: Node, ri):
+    def from_node(node: Node, ri,asn):
         return Router(name=node.name,
                       x=node.x, y=node.y, uid=node.node_id,
                       console_host=node.console_host, console_port=node.console,
-                      router_id=ri, interfaces=[])
+                      router_id=ri, interfaces=[],asn=asn)
 
 
 class Routers(dict):
@@ -99,6 +100,16 @@ class Interface:
                 return self.lien.int_b
             elif self.side == 'b':
                 return self.lien.int_a
+        return None
+
+    @property
+    def peer_interface(self):
+        # type: () -> Interface
+        if self.lien is not None:
+            if self.side == 'a':
+                return self.lien.interface_b
+            elif self.side == 'b':
+                return self.lien.interface_a
         return None
 
     @property
