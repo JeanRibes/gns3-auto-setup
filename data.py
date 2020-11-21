@@ -13,12 +13,18 @@ class Router:
     uid: str
     router_id: str
 
+    console_host: str
+    console_port: int
+
     # type: List[Interface]
     interfaces: list
 
     @staticmethod
     def from_node(node: Node, ri):
-        return Router(name=node.name, x=node.x, y=node.y, uid=node.node_id, router_id=ri, interfaces=[])
+        return Router(name=node.name,
+                      x=node.x, y=node.y, uid=node.node_id,
+                      console_host=node.console_host, console_port=node.console,
+                      router_id=ri, interfaces=[])
 
 
 class Routers(dict):
@@ -110,6 +116,9 @@ class Interface:
 
     def get_ip6(self):
         return f"{self.lien.network6}::{ord(self.side) - 96}/64"
+
+    def end6(self) -> str:
+        return str(ord(self.side) - 96)
 
     def get_ip4(self):
         return f"{self.lien.network4}.{ord(self.side) - 96} 255.255.255.0"

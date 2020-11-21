@@ -4,33 +4,42 @@ OSPF_PROCESS = 1
 
 config_custom = {  # permet de rajouter des paramètres personalisés et les templates
     'templates': {  # définit les templates de base appliqués à tous les routeurs
-        'router': """#### configuration de {{router.name}}
-ipv6 unicast-routing
-{% for interface in rendered_interfaces %}
-{{interface}}
-!{% endfor %}
-{% for classe in router.resolved_classes %}
-# classe {{classe.name}}
-{{classe.template}}
-# fin classe {{classe.name}}
-{% endfor %}
-{% if router.disable %}# ce routeur ne doit pas être configuré{% endif %}
-# fin de la configuration de {{router.name}}
-""",  # requis
+        'router':  # template pour un routeur, requis
+            """#### configuration de {{router.name}}
+            ipv6 unicast-routing
+            
+            # rendered_interfaces contient la configuration des interfaces, déjà générée
+            {% for interface in rendered_interfaces %}
+            {{interface}}
+            {% endfor %}
+            
+            # les templates provenant des classes seront remplacés à la 2e passe de templating
+            {% for classe in router.resolved_classes %}
+            # classe {{classe.name}}
+            {{classe.template}}
+            # fin classe {{classe.name}}
+            {% endfor %}
+            
+            {% if router.disable %}# ce routeur ne doit pas être configuré{% endif %}
+            # fin de la configuration de {{router.name}}
+            """,  #
         #
-        #
-        'interface': """interface {{interface.name}}
-    {% if interface.disable %}# cette interface ne doit pas être configuré{% endif %}
-    ipv6 enable\n    ipv6 address {{interface.ip6}}
-{% for classe in interface.resolved_classes %}
-{{classe.template}}
-{% endfor %}
-{{ interface_template }}
-exit
-# fin interface {{interface.name}}"""
+        'interface':  # requis
+            """interface {{interface.name}}
+                {% if interface.disable %}# cette interface ne doit pas être configuré{% endif %}
+                no shutdown
+                ipv6 enable
+                ipv6 address {{interface.ip_network6}}::{{interface.ip_end6}}/64
+            {% for classe in interface.resolved_classes %}
+            {{classe.template}}
+            {% endfor %}
+            {{ interface_template }}
+            exit
+            # fin interface {{interface.name}}"""
+
     },
     'default_router_classes': ['ospf6-router'],  # des classes qui seront appliquées à tous les routeurs
-    'default_interface_classes': ['interface-out'],
+    'default_interface_classes': [],
     # on peut assigner une classe à des routeurs, interfaces ou même liens
     'classes': [
         {
@@ -40,73 +49,52 @@ exit
     redistribute connected
     router-id {{router.router_id}}
   exit""",
+            'interface_classes': ['ospf6-interface'],  # les interfaces de ce routeur auront ces classes
+            'values': {
+                'ospf_process': 1,
+                'ospf_area': 0,
+            }
         },
         {
-            'name': 'routeur-coeur',
-            'type': 'router',
-            'template': 'router bgp {{router.router_id}}\n address-family ipv6 unicast\n  redistribute connected\n  exit\nexit',
-            'values': {
-                'a': 1,  # limitation: impossible de mettre 'interfaces' ou 'classes'
-                'b': 'boii',
-            },
-            'classes': [  # récursif
-                'link-1',
-            ]
-        }, {
-            'name': 'interface-out',
+            'name': 'ospf6-interface',
             'type': 'interface',
-            'template': 'ip address {{interface.ip4}}',
-            'values': {
-                'c': 2
-            }
-        }, {
-            'name': 'link-1',
-            'type': 'router',
-            'values': {
-                'link': '1'
-            }, 'classes':[],
+            'template': "    ipv6 ospf {{router.ospf_process}} area {{router.ospf_area}}"
         },
-        {
-            'name': 'fibre',
-            'type':'interface',
-            'template': '# je suis une fibre {{interface.fibre}}\n!',
-            'values': {
-                'fibre': 'oui',
-            }
-        }
     ],
     'links':
         [
             {
-                'name': 'R1<-->R5',  # on peut aussi marquer 'R5<-->R1'
-                'extra_router': """no ipv6 router rip\n""",
-                'extra_interface': '    no shut\n    #hi from extra int link',
-                'override_network6': '2001:100:4',
-                'override_network4': '192.168.5',
-                'disable': False,  # désactive intégralement la configuration de l'interface associée
-            },
-            {
                 'name': 'R1<-->R3',
-                'interface_classes': ['fibre'],
-                'router_classes': ['link-1'],
+                'interface_classes': [],
+                'router_classes': [],
                 'template': '# oh que oui'
             }
         ],
     'routers': {
         'R1': {
-            'classes': ['routeur-coeur', 'ospf6-router'],
+            'classes': ['ospf6-router'],
             'template': 'no ip router ospf\n',
             'interfaces': {
                 'f0/0': {
-                    'extra': '    arp log threshold entries 2',
-                    'classes': ['fibre'],
+                    'classes': [],
                     'template': 'no ipv6 ospf 1 area 1',
+                    'values': {
+                        'ip_end6': '101',
+                    }
                 },
                 'f5/0': {'disable': True},
                 # 'f2/0': {'disable': True},
-                # 'f1/0': {'disable': True},
+                'f1/0': {
+                    'template':'# specifique',
+                    'values': {
+                        'ip_network6': '2001:1:1:1',
+                        'ip_end6': '1',
+                    }
+                },
             },
-            'extra': 'router rip\n   redistribute connected\n  exit'
+            'values': {
+                'router_id': '10.0.0.10',
+            }
         },
         'R8': {  # nom (hostname) du routeur. je vais modifier la configuration du routeur R8 ici
             'disable': False,  # désactive la configuration auto de ce routeur

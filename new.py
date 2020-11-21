@@ -1,4 +1,5 @@
 import json
+from socket import *
 from copy import deepcopy
 from ipaddress import IPv4Address
 from typing import Set, Iterable
@@ -33,12 +34,12 @@ def enumerate_links(gs, project_id, routers: Routers):
         router_side_a = routers.get_by_uid(link.nodes[0]['node_id'])
         router_side_b = routers.get_by_uid(link.nodes[1]['node_id'])
 
-        # if router_side_b is None:
-        #    router_side_a.interfaces.append(Interface(name=link.nodes[0]['label']['text']))
-        #    continue
-        # elif router_side_a is None:
-        #    router_side_b.interfaces.append(Interface(name=link.nodes[1]['label']['text']))
-        #    continue
+        if router_side_b is None:
+            router_side_a.interfaces.append(Interface(name=link.nodes[0]['label']['text']))
+            continue
+        elif router_side_a is None:
+            router_side_b.interfaces.append(Interface(name=link.nodes[1]['label']['text']))
+            continue
 
         lien = Lien(
             uid=link.link_id,
@@ -77,16 +78,34 @@ def get_gns_conf():
     return routers, gs, project_id, liens
 
 
+def show_topology(routers: Routers):
+    for router in routers.values():
+        print(f"routeur {router.name}")
+        for itf in router.interfaces:
+            print(
+                f" *   {itf.name} -> {itf.peer.name if itf.peer is not None else 'client'}: {itf.peer_int if itf.peer is not None else ''}")
+
+
 def gen_tree(router: Router) -> dict:
     ifs = []
     for int in router.interfaces:
         interface: Interface = int
-        ifs.append({
-            'name': interface.name,
-            'lien': interface.lien.name,
-            'ip4': interface.get_ip4(),
-            'ip6': interface.get_ip6(),
-        })
+        if interface.peer is not None:  # un routeur de l'autre côté
+            ifs.append({
+                'name': interface.name,
+                'lien': interface.lien.name,
+                'ip_network4': interface.lien.network4,
+                'ip_network6': interface.lien.network6,
+                'ip_end6': interface.end6(),
+            })
+        else:
+            ifs.append({
+                'name': interface.name,
+                'lien': 'edge',
+                'ip_network4': 'configurez manuellement',
+                'ip_network6': 'configurez manuellement',
+                'ip_end6': '1',
+            })
     return {
         'name': router.name,
         'router_id': router.router_id,
@@ -95,31 +114,11 @@ def gen_tree(router: Router) -> dict:
 
 
 def find(liste: list, k, v):
-    return list(filter(lambda e: e[k] == v, liste))[0]
-
-
-# def recurse_class(classname, type) -> List[dict]:
-#    classe_parent = find(config_custom['classes'], 'name', classname)
-#    classes = [classe_parent]
-#    for classe in safe_get_value(classe_parent, [], 'classes'):
-#        try:
-#            f_c = find(config_custom['classes'], 'name', classe)
-#            classes.append(f_c)
-#            if f_c['type'] != type:
-#                print('Attention, mauvais type de classe')
-#        except:
-#            pass
-#    return classes
-
-
-# def recurse_classnames(classname: str, type: str) -> Set[str]:
-#    l1 = set(classname)
-#    for classe in config_custom['classes']:
-#        l1.update(safe_get_value(classe, [], 'classes'))
-#    l2 = set()
-#    for classe in l1:
-#        l2.update(recurse_classnames(classe, type))
-#    return l1 | l2
+    try:
+        return list(filter(lambda e: e[k] == v, liste))[0]
+    except IndexError:
+        print(f"['{k}']={v} non trouvé !\n il vous manque sûrement la classe {v}")
+        exit(1)
 
 
 def r2(classnames: Set[str]) -> Set[str]:
@@ -187,7 +186,7 @@ def resolve_link_config(router_a_name: str, router_b_name: str) -> dict:
                     router_b_name + '<-->' + router_a_name):
                 return link
         return None
-    except KeyError:
+    except (KeyError, AttributeError):
         return None
 
 
@@ -199,11 +198,17 @@ def resolve_router_config(router: Router):
     """
     conf = gen_tree(router)
     template = safe_get_value(config_custom, '', 'templates', 'router')
-    cc = safe_get_value(config_custom, 'routers', router.name)
-    classes = resolve_classes(safe_get_value(cc, [], 'classes')+config_custom['default_router_classes'], 'router')
+    cc = safe_get_value(config_custom, {}, 'routers', router.name)
+    classes = resolve_classes(safe_get_value(cc, [], 'classes') + config_custom['default_router_classes'], 'router')
     apply_values(classes, conf)
+
+    if cc.get('values'):
+        conf.update(cc['values'])
     conf['resolved_classes'] = classes
 
+    conf['interface_classes'] = []
+    for classe in filter(lambda c: c.get('interface_classes'), classes):
+        conf['interface_classes'].extend(classe['interface_classes'])
     conf['disable'] = safe_get_value(cc, False, 'disable')
 
     for interface in router.interfaces:
@@ -211,14 +216,26 @@ def resolve_router_config(router: Router):
         user_def_interface = safe_get_value(cc, {}, 'interfaces', interface.name)  # la config utilisateur
         int_conf['disable'] = safe_get_value(user_def_interface, False, 'disable')
         if_classes = resolve_classes(
-            safe_get_value(user_def_interface, [], 'classes') + config_custom['default_interface_classes'], 'interface')
+            safe_get_value(user_def_interface, [], 'classes')
+            + config_custom['default_interface_classes']
+            + conf['interface_classes'] if interface.peer is not None else [] # fait en sorte
+            # de ne pas configurer de protocole de routage sur une interface de bordure
+            # les interfaces externes doivent être config à la main
+            , 'interface')
         apply_values(if_classes, int_conf)
+        if user_def_interface.get('values'):
+            print(user_def_interface['values'])
+            int_conf.update(user_def_interface['values'])
         int_conf['resolved_classes'] = if_classes
         int_conf['template'] = safe_get_value(config_custom, '', 'templates', 'interface')
         int_conf['interface_template'] = safe_get_value(user_def_interface, '', 'template')
+        print('user template', int_conf['interface_template'])
 
-        lien_custom = resolve_link_config(router.name, interface.peer.name)
-        if lien_custom is not None: # ajoute des configurations personalisées à l'interface depuis la config des liens
+        if interface.peer is not None:
+            lien_custom = resolve_link_config(router.name, interface.peer.name)
+        else:
+            lien_custom = None
+        if lien_custom is not None:  # ajoute des configurations personalisées à l'interface depuis la config des liens
             link_classes = resolve_classes(safe_get_value(lien_custom, [], 'interface_classes'), 'interface')
             apply_values(link_classes, int_conf)
             int_conf['resolved_classes'] += link_classes
@@ -236,29 +253,52 @@ def resolve_router_config(router: Router):
 
 
 def generate_conf(conf: dict) -> str:
-    print(json.dumps(conf, indent=4, sort_keys=True))
+    # print(json.dumps(conf, indent=4, sort_keys=True))
     rendered_interfaces = []
     for interface in conf['interfaces']:
-        pass1 = Template(interface['template']).render(interface=interface)
-        rendered_interfaces.append(Template(pass1).render(interface=interface))
-
-    # print(rendered_interfaces)
-    # print('================')
-    # print(conf['template'])
-    # print('==========')
+        pass1 = Template(interface['template']).render(interface=interface, router=conf)
+        rendered_interfaces.append(Template(pass1).render(interface=interface, router=conf))
 
     t1 = Template(conf['template']).render(router=conf, rendered_interfaces=rendered_interfaces)
-    # print('----------------')
-    # print(t1)
-    # print('----------------')
     return Template(t1).render(router=conf, ospf_process=1)
 
 
+class Console:
+    sock: socket
+
+    def __init__(self, console_host, console_port):
+        self.sock = socket()
+        try:
+            self.sock.connect((console_host, console_port))
+        except ConnectionRefusedError:
+            print("Vous devez lancer le projet GNS3 pour configurer les routeurs")
+            exit(0)
+
+    def write_conf(self, text: str):
+        # on remplace \n par \r car la console Cisco attend \r comme saut de ligne
+        self.write_cmd(b'')
+        self.write_cmd(b'configure terminal')
+        self.sock.send(text.replace('\n', '\r').encode('utf-8'))
+        self.write_cmd(b'end')
+
+    def write_cmd(self, cmd: bytes):
+        self.sock.send(cmd + b'\r')
+
+    @staticmethod
+    def from_router(router: Router):
+        return Console(console_host=router.console_host, console_port=router.console_port)
+
+
+def configure_router(router: Router) -> Console:
+    conf = generate_conf(resolve_router_config(router))
+    console = Console.from_router(router)
+    console.write_conf(conf)
+    return console
+
+
 if __name__ == '__main__':
-    # print(safe_get_value(config_custom, 'fail', 'routers', 'R8', 'interfaces','f0/0','disable'))
     routers, gs, project_id, liens = get_gns_conf()
-    r1: Router = routers.get('R3')
-    # print(json.dumps(recurse_class('routeur-coeur'), indent=4, sort_keys=True))
-    a = generate_conf(resolve_router_config(r1))
+    show_topology(routers)
     for router in routers.values():
-        print(generate_conf(resolve_router_config(router)))
+        # print(generate_conf(resolve_router_config(router)))
+        configure_router(router)
