@@ -9,16 +9,30 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
             'name': 'routeur-coeur',
             'template': 'router bgp {{router_id}}',
             'values': {
-                'a': 1,
+                'a': 1,  # limitation: impossible de mettre 'interfaces' ou 'classes'
                 'b': 'boii',
-            }
+            },
+            'classes': [  # récursif
+                'fibre'
+            ]
         }, {
             'name': 'interface-out',
-            'template': 'ip address {{interface.ip4}}'
+            'template': 'ip address {{interface.ip4}}',
+            'values': {
+                'c': 2
+            }
+        }, {
+            'name': 'link-1',
+            'values': {
+                'link': '1'
+            }
         },
         {
             'name': 'fibre',
             'template': 'nope',
+            'values': {
+                'fibre': 'oui',
+            }
         }
     ],
     'links':
@@ -32,15 +46,26 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
                 'override_network4': '192.168.5',
                 'disable': False,  # désactive intégralement la configuration de l'interface associée
             },
+            {
+                'name': 'R1<-->R3',
+                'interface_classes': ['link-1'],
+                'router_classes': ['interface-out'],
+                'template': '# oh que oui'
+            }
         ],
     'routers': {
-        'R5': {
-            'classe': 'routeur-coeur',
+        'R1': {
+            'classes': ['routeur-coeur'],
+            'template': 'no ip router ospf',
             'interfaces': {
-                'f0/0': {'extra': '    arp log threshold entries 2'},
-                'f3/0': {'disable': True},
-                'f2/0': {'disable': True},
-                'f1/0': {'disable': True},
+                'f0/0': {
+                    'extra': '    arp log threshold entries 2',
+                    'classes': ['fibre'],
+                    'template': 'no ipv6 ospf 1 area 1',
+                },
+                # 'f3/0': {'disable': True},
+                # 'f2/0': {'disable': True},
+                # 'f1/0': {'disable': True},
             },
             'extra': 'router rip\n   redistribute connected\n  exit'
         },
@@ -68,7 +93,8 @@ config_custom = {  # permet de rajouter des paramètres personalisés et les tem
             }
         },
         'R2': {
-            'disable': True
+            'disable': True,
+            'template': 'router ospf 1\n  router-id {{router_id}}',
         }
     }
 }

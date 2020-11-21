@@ -14,7 +14,7 @@ class Router:
     router_id: str
 
     # type: List[Interface]
-    interfaces:list
+    interfaces: list
 
     @staticmethod
     def from_node(node: Node, ri):
@@ -39,8 +39,8 @@ class Routers(dict):
 class Lien:
     uid: str
 
-    network4: str
-    network6: str
+    network4: str  # 10.2.0
+    network6: str  # 2201:beef
 
     side_a: Router
     side_b: Router
@@ -59,7 +59,12 @@ class Lien:
         return list(filter(lambda i: i.name == self.int_b, self.side_b.interfaces))[0]
 
     def __str__(self):
-        return f"({self.side_a.name}) {self.int_a} <-> {self.int_b} ({self.side_b.name})"
+        return f"({self.side_a.name}) {self.int_a} <--> {self.int_b} ({self.side_b.name})"
+
+    @property
+    def name(self):
+        return f"{self.side_a.name}<-->{self.side_b.name}"
+
 
 SIDE_A = 'a'
 SIDE_B = 'b'
@@ -103,6 +108,11 @@ class Interface:
             return str(self.lien)
         return self.name
 
+    def get_ip6(self):
+        return f"{self.lien.network6}::{ord(self.side) - 96}/64"
+
+    def get_ip4(self):
+        return f"{self.lien.network4}.{ord(self.side) - 96} 255.255.255.0"
 
 
 router = {

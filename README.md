@@ -108,6 +108,7 @@ Mais si vous faites ça il faudra les supprimer à la main.
  * [ ] configurer les conteneurs Docker
  * [ ] avoir un GUI ? (mdr)
  * [ ] option pour générer juste un squelette des configs ?
+ * [ ] générer des adresses IPv4 qui font des réseaux en /30 pour être + économe
 ```
 on itère GNS3 pour trouver les routeurs et on construit un JSON. on ajoutera à ce json les data utilisateur
 on itère la conf utilisateur pour résoudre quels templates vont sur quels routeurs & interfaces ...
@@ -115,6 +116,11 @@ on construit l'objet de chaque routeur & interface en stockant ses valeurs et se
 on concatène les templates (avec un template =D )
 on fait le rendu des templates
 il faudrait faire deux passes de rendu, pour résoudre les templates user et ensuite les appliquer
+
+dans une boucle qui itère les Router, faire
+    résoudre la config utilisateur
+    générer le template
+    appliquer la conf à distance
 ```
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
