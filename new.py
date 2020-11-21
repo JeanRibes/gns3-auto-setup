@@ -216,17 +216,16 @@ def resolve_router_config(router: Router):
         int_conf['resolved_classes'] = if_classes
         int_conf['template'] = safe_get_value(config_custom, '', 'templates', 'interface')
         int_conf['interface_template'] = safe_get_value(user_def_interface, '', 'template')
-        lien = resolve_link_config(router.name, interface.peer.name)
-        if lien is not None:
-            link_classes = resolve_classes(safe_get_value(lien, [], 'interface_classes'), 'interface')
+
+        lien_custom = resolve_link_config(router.name, interface.peer.name)
+        if lien_custom is not None: # ajoute des configurations personalisées à l'interface depuis la config des liens
+            link_classes = resolve_classes(safe_get_value(lien_custom, [], 'interface_classes'), 'interface')
             apply_values(link_classes, int_conf)
             int_conf['resolved_classes'] += link_classes
-            router_classes = resolve_classes(safe_get_value(lien, [], 'router_classes'), 'router')
+            router_classes = resolve_classes(safe_get_value(lien_custom, [], 'router_classes'), 'router')
             apply_values(router_classes, conf)
             conf['resolved_classes'] += router_classes
-            int_conf['interface_template'] += safe_get_value(lien, '', 'template')
-        else:
-            print(f'pas de lien pour {interface.lien}')
+            int_conf['interface_template'] += safe_get_value(lien_custom, '', 'template')
         conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
     conf['template'] = template
 
