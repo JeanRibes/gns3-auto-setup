@@ -4,6 +4,8 @@ gns3fy==0.7.1
 idna==2.10
 Jinja2==2.11.2
 MarkupSafe==1.1.1
+pycairo==1.20.0
 pydantic==1.7.2
+PyGObject==3.38.0
 requests==2.25.0
 urllib3==1.26.2

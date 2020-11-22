@@ -99,7 +99,7 @@ et de les redémarrer quand vous rajoutez/enlevez des routeurs.
 Sinon il est aussi possible de rajouter une 'anti-configuration' qui désactive tout juste avant la nouvelle configuration. 
 
 ## Limitations
-* Les templates par défaut ne font rien des clés `'disable'`, mais vous pouvez en choisir le fonctionnement
+* Les templates par défaut ne font rien des clés `'disable'`, mais vKous pouvez en choisir le fonctionnement
 avec ``{% if router.disable %}...{% endif %}``.
 * Si vous modifiez les adresses IPv4, le diagramme dans GNS3 ne reflètera pas vos modifications.
 * le script efface les sauts de lignes superflus pour réduire la taille des confs Cisco
