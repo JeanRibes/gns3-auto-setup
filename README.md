@@ -1,10 +1,9 @@
 # Autoconfigurateur Cisco IOS
 Ce script python se connecte au serveur GNS3 local et configure entièrement 
 un réseau OSPF sur tous les routeurs Cisco. Il effectue tout seul l'adressage IP, l'allocation
-des ``router-id``. 
+des ``router-id``... 
 
-Il s'adapte à n'importe quelle topologie réseau,
-et vous êtes libre de choisir le nom de vos routeurs ! 
+Il s'adapte à n'importe quelle topologie réseau, et vous êtes libre de choisir le nom de vos routeurs ! 
 Il est possible de personaliser la configuration avec le système de templates et valeurs.
 Vous pouvez remplacer tout ce qui est généré par l'autoconfiguration et changer les templates.
 
@@ -38,6 +37,8 @@ nouvelle classe qui définit la valeur du coût et appliquer cette classe à plu
 à toutes les interfaces d'un routeur.
 ## Multi-shell
 Avec ``python3 main.py -g ``, vous pouvez exécuter une commande sur tous les routeurs Cisco !
+
+
 # Installation
 ```
 pip3 install gns3fy==0.7.1 Jinja2==2.11.2
@@ -75,7 +76,13 @@ optional arguments:
 Le fichier `config.py` vous permet de rajouter votre grain de sel. Regardez les configurations générées
 et les données JSON pour savoir comment modifier les templates.
 
-Le langage de template utilisé est *Jinja2*, qui a la même syntaxe que les templates *Django*
+Le langage de template utilisé est *Jinja2*, qui a la même syntaxe que les templates *Django*.
+Attention, pour faire le rendu d'un template dans un autre, il faut faire comme suit:
+```jinja2
+{{Template(child.template).render(Template=Template,parent=parent,child=child)}}
+```
+Il faut passer la classe ``Template`` en variable pour que les templates enfants puissent marcher.
+La configuration d'exemple fait cela pour les *interfaces* et les *classes*.
 
 Pour trouver les noms des interfaces, activez *View > Show/Hide interfaces labels*
 
@@ -91,6 +98,13 @@ et de les redémarrer quand vous rajoutez/enlevez des routeurs.
 
 Sinon il est aussi possible de rajouter une 'anti-configuration' qui désactive tout juste avant la nouvelle configuration. 
 
+## Limitations
+* Les templates par défaut ne font rien des clés `'disable'`, mais vous pouvez en choisir le fonctionnement
+avec ``{% if router.disable %}...{% endif %}``.
+* Si vous modifiez les adresses IPv4, le diagramme dans GNS3 ne reflètera pas vos modifications.
+* le script efface les sauts de lignes superflus pour réduire la taille des confs Cisco
+pour avoir un saut de ligne (ligne vide), soit vous changez le fonctionnement soit vous faites
+comme Cisco dans ``show running-config``, mettez un point d'exclamation `!` sur la ligne.
 ## Diagramme dans GNS3
 Ce script crée automatiquement des petites étiquettes/dessins dans GNS3 pour afficher le
 sous-réseau actif sur un lien (IPv4 et IPv6).

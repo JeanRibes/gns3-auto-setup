@@ -1,56 +1,66 @@
 GNS3_PROJECT_NAME = "auto"  # le nom de votre projet. "auto" utilise celui qui est ouvert
 
-config_custom = {  # permet de rajouter des paramètres personalisés et les templates
-    'templates': {  # définit les templates de base appliqués à tous les routeurs
-        'router':  # template pour un routeur, requis
-            """#### configuration de {{router.name}}
+# changez dans ce fichier les configurations.
+# les templates par defaut sont
+
+default_router_template = """#### configuration de {{router.name}}
 ipv6 unicast-routing
             
-# rendered_interfaces contient la configuration des interfaces, déjà générée
-{% for interface in rendered_interfaces %}
-{{interface}}
+{% for interface in router.interfaces %}
+{{Template(interface.template).render(Template=Template,interface=interface,router=router)}}
 #--
 {% endfor %}
             
-# les templates provenant des classes seront remplacés à la 2e passe de templating
+# les templates provenant des classes seront remplaces a la 2e passe de templating
 {% for classe in router.resolved_classes %}
 # classe {{classe.name}}
-{{classe.template}}
+{{Template(classe.template).render(Template=Template,classe=classe,router=router)}}
 #--
 # fin classe {{classe.name}}
+!
 {% endfor %}
             
-{% if router.disable %}# ce routeur ne doit pas être configuré{% endif %}
+{% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}
 # fin de la configuration de {{router.name}}
-""",  #
-        #
-        'interface':  # requis
-            """
+"""
+
+default_interface_template = """
 interface {{interface.name}}
-{% if interface.disable %}# cette interface ne doit pas être configuré{% endif %}
+{% if interface.disable %}
+# cette interface ne doit pas etre configuree
+{% endif %}
 {% if interface.peer %}
     description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}
 {% endif %}
     no shutdown
     ipv6 enable
     ipv6 address {{interface.ip_network6}}::{{interface.ip_end6}}/64
+    ip address {{interface.ip_network4}}
     {% for classe in interface.resolved_classes %}
-    {{classe.template}}
-    {% endfor %}
+# classe {{classe.name}}
+    {{Template(classe.template).render(interface=interface,router=router)}}
+# fin classe {{classe.name}}
+{% endfor %}
+#template specifique a cette interface
     {{ interface.interface_template }}
   exit
 # fin interface {{interface.name}}"""
 
+
+config_custom = {  # permet de rajouter des parametres personalises et les templates
+    'templates': {  # definit les templates de base appliques a tous les routeurs
+        'router': default_router_template,  # template pour un routeur, requis
+        'interface': default_interface_template  # requis
     },
     'default_router_classes': ['ospf6-router', 'ospf4-router', 'bgp-router'],
-    # des classes qui seront appliquées à tous les routeurs
+    # des classes qui seront appliquees a tous les routeurs
     'default_interface_classes': [],
-    # on peut assigner une classe à des routeurs, interfaces ou même liens
+    # on peut assigner une classe a des routeurs, interfaces ou meme liens
     'classes': [
         {
             'name': 'ospf6-router',
-            'type': 'router',  # on ne peut pas appliquer une classe à un routeur ET une interface
-            'template': """ipv6 router ospf {{ospf_process}}
+            'type': 'router',  # on ne peut pas appliquer une classe a un routeur ET une interface
+            'template': """ipv6 router ospf {{router.ospf_process}}
     redistribute connected
     router-id {{router.router_id}}
   exit""",
@@ -84,7 +94,7 @@ interface {{interface.name}}
         {
             'name': 'ospf6-interface',
             'type': 'interface',
-            'template': "    ipv6 ospf {{router.ospf_process}} area {{router.ospf_area}}"
+            'template': "ipv6 ospf {{router.ospf_process}} area {{router.ospf_area}}"
         },
         {
             'name': 'mpls-interface',
@@ -102,23 +112,21 @@ interface {{interface.name}}
             'type': 'router',
             'template': """
 router bgp {{router.asn}}
-bgp router-id {{router.router_id}}
-{% for interface in router.interfaces %}
-{% if interface.peer %}
-neighbor {{interface.peer.ip4}} remote-as {{interface.peer.asn}}
-neighbor {{interface.peer.ip4}} activate
-neighbor {{interface.peer.ip6}} remote-as {{interface.peer.asn}}
-neighbor {{interface.peer.ip6}} activate
-address-family ipv4 unicast
-    redistribute connected
-exit-address-family
-address-family ipv6 unicast
-    redistribute connected
-exit-address-family
-{% endif %}
-{% endfor %}
+    bgp router-id {{router.router_id}}
+    {% for interface in router.interfaces %}{% if interface.peer %}
+    neighbor {{interface.peer.ip4}} remote-as {{interface.peer.asn}}
+    neighbor {{interface.peer.ip4}} activate
+    neighbor {{interface.peer.ip6}} remote-as {{interface.peer.asn}}
+    neighbor {{interface.peer.ip6}} activate
+    {% endif %}{% endfor %}
+    address-family ipv4 unicast
+        redistribute connected
+    exit-address-family
+    address-family ipv6 unicast
+        redistribute connected
+    exit-address-family
 exit
-            """,
+!""",
             'values': {
                 'announce_internal': True,
             }
@@ -126,7 +134,7 @@ exit
         {
             'name': 'ospf6-cost',
             'type': 'interface',
-            # attention il faudra définie cette variable dans les 'values' des interfaces de chque routeur sur lequel on l'active
+            # attention il faudra definie cette variable dans les 'values' des interfaces de chque routeur sur lequel on l'active
             'template': 'ipv6 ospf cost {{interface.ospf6_cost}}'
         }
     ],

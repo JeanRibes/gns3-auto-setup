@@ -1,7 +1,9 @@
+#!/usr/bin/env python3
 import argparse
 import json
 import os
 import pprint
+import re
 import time
 from copy import deepcopy
 from socket import *
@@ -290,21 +292,16 @@ def generate_conf(conf: dict) -> str:
     # conf_txt = open(f"output/conf_{conf['name']}_{int(time.time())}.cfg",'w+')
     # conf_json = open(f"output/conf_{conf['name']}_{int(time.time())}.json",'w+')
 
-    rendered_interfaces = []
-    for interface in conf['interfaces']:
-        pass1 = Template(interface['template']).render(interface=interface, router=conf)
-        rendered_interfaces.append(Template(pass1).render(interface=interface, router=conf))
+    rendered = Template(conf['template']).render(Template=Template, router=conf, ospf_process=1)
 
-    t1 = Template(conf['template']).render(router=conf, rendered_interfaces=rendered_interfaces)
-    t2 = Template(t1).render(router=conf, ospf_process=1)
+    # https://stackoverflow.com/questions/28901452/reduce-multiple-blank-lines-to-single-pythonically
+    rendered = re.sub(r'\n\s*\n', '\n', rendered)
 
-    t2 = t2.replace("\n\n", '\n').replace("\n\n", '\n').replace("\n\n", '\n').replace("\n\n", '\n')
-
-    conf_txt.write(t2)
+    conf_txt.write(rendered)
     conf_txt.close()
     json.dump(conf, conf_json, indent=4, sort_keys=True)
     conf_json.close()
-    return t2
+    return rendered
 
 
 class Console:
@@ -506,21 +503,35 @@ def parse_cli():
                                                                     "les subnets, router-id et ASN")
     parser.add_argument('--delete-labels', action='store_true', help="Efface tous les labels crées par ce programme"
                                                                      " de GNS3 puis termine.")
-    parser.add_argument('--apply', action='store_true',
+    parser.add_argument('--apply','-a', action='store_true',
                         help="Active l'envoi automatique des configurations aux routeurs")
     parser.add_argument('--show-topology', action='store_true', help="Montre la topologie détéctée par ce script.")
-    parser.add_argument('--global-cmd', '-g', type=str, nargs='+', default=[],
-                        help='Une commande qui sera exécutée sur tous les routeurs en même temps')
+    parser.add_argument('--global-cmd', '-g', type=str, nargs='+', default=[], metavar='commande',
+                        help='Une commande qui sera exécutée sur tous les routeurs en même temps. Pas besoin d\'utiliser de guillemets')
+    parser.add_argument('--export-user-conf','-e', action='store_true',
+                        help="Exporte la configuration utilisateur au format JSON et termine")
+    parser.add_argument('--import-user-conf','-i', type=str, nargs=1, default='', metavar='user_conf.json',
+                        help="Utilise la configuration utilisateur depuis un fichier")
     vals = parser.parse_args()
     return vals
 
 
 if __name__ == '__main__':
     vals = parse_cli()
+
+    if len(vals.import_user_conf)>1:
+        f = open(vals.import_user_conf,'r')
+        config_custom = json.load(f)
+
+    if vals.export_user_conf:
+        print(json.dumps(config_custom, indent=2, sort_keys=False))
+        exit(0)
     try:
         os.mkdir('output')
     except FileExistsError:
         pass
+
+
 
     routers, gs, project_id, liens = get_gns_conf()
 
