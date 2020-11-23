@@ -68,7 +68,7 @@ Avec ``python3 main.py -g ``, vous pouvez exécuter une commande sur tous les ro
 
 
 # Installation
-## Avec un virtualenv (bonne pratique)
+## Avec un virtualenv
 ```
 git clone https://github.com/JeanRibes/gns3-auto-setup.git gns3-auto-setup
 cd gns3-auto-setup
@@ -78,7 +78,7 @@ source venv/bin/activate # vous devez tapez cette ligne à chaque fois que vous 
 # s'il n'y a pas (venv) au début de votre ligne de commande il faut installer python3-venv ou virtualenv
 pip3 install gns3fy==0.7.1 Jinja2==2.11.2
 ```
-## Sans virtualenv (#yolo)
+## Sans virtualenv
 ```
 git clone https://github.com/JeanRibes/gns3-auto-setup.git gns3-auto-setup
 cd gns3-auto-setup
@@ -188,6 +188,7 @@ Si c'est trop agaçant vous pouvez utiliser le programme avec ``--hide-labels`` 
  * [x] séparer le réseau et l'adresse dans le JSON pour pouvoir configurer facilement BGP
 avoir comme clés ip_network, ip_end, ip_mask et ip_prefixlen, toutes configurables & en ipv4 et v6
 * [ ] avoir un template par défaut pour les ``edge devices`` et les rajouter dans la représentation interne
+* [ ] avoir des templates par défaut pou FRRrouting & Quagga
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
 ### Crédits
@@ -208,7 +209,7 @@ custom_config = {
         'router': "",
         'interface': "",
     },
-    'default_router_classes': [],
+    'default_router_classes': [], # appliqué à tous les routeurs
     'default_interface_classes': [],
     'classes': [{
         'name': "<default>",
@@ -216,14 +217,17 @@ custom_config = {
         'template': "",
         'values': {
             'a': 'b',
-        }
+        },
+        'classes':[], # inclusion récursive
+        'interface_classes': [], # si la classe est appliquée à un routeur, les interfaces de routeur se verront appliquer ces classes
+        
     }],
     'links': [
 
         {
             'name': "",
-            'interface_classes': [],
-            'router_classes': [],
+            'interface_classes': [], # ces clases seront appliquées aux interfaces de ce lien (sur chaque routeur)
+            'router_classes': [], # celles-ci seront appliquées aux routeurs des deux bouts du lien
             'template': "",
             'interface_values': {},
         }],
