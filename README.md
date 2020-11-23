@@ -11,7 +11,8 @@ Le script génère des configurations Cisco et peut les applique tout seul aux r
 console telnet GNS3
 ![Diagramme GNS3](screenshot.jpg "Diagramme GNS3")
 
-- [Autoconfigurateur Cisco IOS](#autoconfigurateur-cisco-ios)
+# Table des matières
+
 - [Fonctionnalités](#fonctionnalités)
   * [Autoconfiguration](#autoconfiguration)
   * [Templates dynamiques](#templates-dynamiques)
@@ -30,7 +31,7 @@ console telnet GNS3
     + [Je peux pas bouger les dessins](#je-peux-pas-bouger-les-dessins)
     + [J'arrive plus à cliquer sur les routeurs pour accéder à la console !](#j'arrive-plus---cliquer-sur-les-routeurs-pour-acc-der---la-console--)
   * [TODO](#todo)
-    + [Crédits](#crédits)
+  * [Crédits](#crédits)
 - [Format de données](#format-de-données)
   * [configuration utilisateur](#configuration-utilisateur)
   * [représentation interne disponible dans les templates](#représentation-interne-disponible-dans-les-templates)
@@ -191,6 +192,7 @@ avoir comme clés ip_network, ip_end, ip_mask et ip_prefixlen, toutes configurab
 * [ ] avoir des templates par défaut pou FRRrouting & Quagga
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
+
 ### Crédits
  * Le package [gns3fy](https://github.com/davidban77/gns3fy) de David Flores
  * Helm pour l'inspiration des templates/values
