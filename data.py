@@ -1,9 +1,12 @@
+import json
 from dataclasses import dataclass
 from dataclasses import dataclass
 from ipaddress import IPv4Address
 from typing import List, Union
 
+import yaml
 from gns3fy import Node
+from jsonschema import validate
 
 
 @dataclass
@@ -136,60 +139,12 @@ class Interface:
     def get_ip4(self):
         # on fait de la magie avec les IPv4 pour utiliser des sous-réseaux de 2 hôtes
         return f"{IPv4Address(int(self.lien.network4) + ord(self.side) - 96)}"
-        # return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)}/30" # pour FRR/Quagga
 
 
-router = {
-    'name': 'R5',
-    # 'disable': False,
-    'extra': '# rien',
-    'router_id': '0.0.0.0',
-    'interfaces': [
-        {
-            'name': 'f0/0',
-            # 'disable': False,
-            'extra': ' je suis {{router_id}}',
-            'ip4': '10.0.0.1 255.255.0.0',
-            'ip6': '2001:0::1/64',
-        },
-        {
-            'name': 'f3/0',
-            # 'disable': False,
-            'extra': '#oui',
-            'ip4': '10.2.0.2 255.255.0.0',
-            'ip6': '2001:2::2/64',
-        }
-    ]
-}
-# on laisse l'utilisateur rajouter sa sauce au template -> on ne fournit pas le router-id
-user_template = """
-ipv6 unicast-routing
-ip cef
-ipv6 router ospf 1
-    redistribute connected
-    router-id {{router_id}}
-  exit
-router ospf 1
-    redistribute connected subnets
-    router-id {{router_id}}
-  exit
-{{extra}}
-{% for interface in interfaces %}
-int {{interface.name}}
-    no shut
-    ip address {{interface.ip4}}
-    mpls ip
-    ipv6 enable
-    ipv6 address {{interface.ip6}}
-    # extra
-    {{interface.extra}}
-  exit
-{% endfor %}
-"""
 
-if __name__ == '__main__':
-    from jinja2 import Template
 
-    t = Template(user_template)
-    v = Template(t.render(router))
-    print(v.render(router))
+def load_user_conf(filename='user_conf.yaml')->dict:
+    user_conf = yaml.load(open(filename,'r'), Loader=yaml.FullLoader)
+    user_conf_schema = json.load(open('user-conf-schema.json', 'r'))
+    validate(instance=user_conf, schema=user_conf_schema)
+    return user_conf

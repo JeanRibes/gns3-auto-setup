@@ -12,7 +12,7 @@ from typing import Set
 from jinja2 import Template
 from gns3fy import gns3fy, Project, Link
 
-from config import config_custom
+from config import default_yaml
 from data import *
 
 user_config = {}
@@ -159,6 +159,13 @@ def find(liste: list, k, v):
         exit(1)
 
 
+def find2(liste: list, k, v, default):
+    try:
+        return list(filter(lambda e: e[k] == v, liste))[0]
+    except:
+        return default
+
+
 def r2(classnames: Set[str]) -> Set[str]:
     """
     Normalement il peut pas faire de RecursionError
@@ -236,7 +243,7 @@ def resolve_router_config(router: Router) -> dict:
     """
     conf = gen_tree(router)
     template = safe_get_value(user_config, '', 'templates', 'router')
-    cc = safe_get_value(user_config, {}, 'routers', router.name)
+    cc = find2(user_config['routers'], 'name', router.name, {})
     classes = resolve_classes(safe_get_value(cc, [], 'classes') + user_config['default_router_classes'], 'router')
     apply_classes_values(classes, conf)
 
@@ -251,7 +258,10 @@ def resolve_router_config(router: Router) -> dict:
 
     for interface in router.interfaces:
         int_conf = find(conf['interfaces'], 'name', interface.name)  # la config auto-généré
-        user_def_interface = safe_get_value(cc, {}, 'interfaces', interface.name)  # la config utilisateur
+        if cc.get('interfaces'):
+            user_def_interface = find2(cc['interfaces'], 'name', interface.name, {})  # la config utilisateur
+        else:
+            user_def_interface = {}
         int_conf['disable'] = safe_get_value(user_def_interface, False, 'disable')
         if_classes = resolve_classes(
             safe_get_value(user_def_interface, [], 'classes')
@@ -424,13 +434,16 @@ def display_tracked_subnets(project: Project, liens: List[Lien]):
         text = f"{lien.network4}/30\n{lien.network6}::"
         x = (lien.side_a.x + lien.side_b.x) // 2 - 25
         y = (lien.side_a.y + lien.side_b.y) // 2
-        project.create_drawing(
-            svg=f'<svg width="125" height="40">{MAGIC_SVG}<rect width="125" height="40" fill="#ffffff" fill-opacity="1.0" stroke-width="2" stroke="#000000"/></svg>',
-            x=x, y=y, z=1, locked=True)
-        project.create_drawing(
-            svg=f'<svg width="39" height="30">{MAGIC_SVG}<text font-family="TypeWriter" font-size="10.0" font-weight="bold" fill="#346c59" stroke="#afafe1" stroke-width="100" fill-opacity="1.0">{text}\n</text>'
-                + '</svg>',
-            x=x, y=y, z=100, locked=True)
+        try:
+            project.create_drawing(
+                svg=f'<svg width="125" height="40">{MAGIC_SVG}<rect width="125" height="40" fill="#ffffff" fill-opacity="1.0" stroke-width="2" stroke="#000000"/></svg>',
+                x=x, y=y, z=1, locked=True)
+            project.create_drawing(
+                svg=f'<svg width="39" height="30">{MAGIC_SVG}<text font-family="TypeWriter" font-size="10.0" font-weight="bold" fill="#346c59" stroke="#afafe1" stroke-width="100" fill-opacity="1.0">{text}\n</text>'
+                    + '</svg>',
+                x=x, y=y, z=100, locked=True)
+        except AttributeError:
+            pass  # truc à la con de l'API gns3 qui arrive temps en temps
 
 
 def display_router_ids(project: Project, routers: Routers):
@@ -496,22 +509,25 @@ def generate_skeleton(routers: List[Router], liens: List[Lien]) -> dict:
             }
         }],
         'links': links,
-        'routers': {}
+        'routers': []
     }
     for router in routers:
-        main['routers'][router.name] = {
-            'disable': False,
-            'classes': [],
-            'template': "",
-            'interfaces': {},
-            'values': {},
-        }
+        ifs = []
         for interface in router.interfaces:
-            main['routers'][router.name]['interfaces'][interface.name] = {
+            ifs.append({
+                "name": interface.name,
                 'template': "",
                 'classes': [],
                 'values': {},
-            }
+            })
+        main['routers'].append({
+            "name": router.name,
+            'disable': False,
+            'classes': [],
+            'template': "",
+            'interfaces': ifs,
+            'values': {},
+        })
     return main
 
 
@@ -519,7 +535,7 @@ def parse_cli():
     parser = argparse.ArgumentParser(description='Configurateur automatique de routeurs dans GNS3')
     parser.add_argument('--gen-skeleton', action='store_true', help="Affiche un squelette de configuration adapté au "
                                                                     "réseau détécté, sans configurer les routeurs.")
-    parser.add_argument('--hide-labels', action='store_false', help="Crée des jolis labels dans GNS3 pour afficher "
+    parser.add_argument('--hide-labels','-n', action='store_false', help="Crée des jolis labels dans GNS3 pour afficher "
                                                                     "les subnets, router-id et ASN")
     parser.add_argument('--delete-labels', action='store_true', help="Efface tous les labels crées par ce programme"
                                                                      " de GNS3 puis termine.")
@@ -530,29 +546,34 @@ def parse_cli():
                         help='Une commande qui sera exécutée sur tous les routeurs en même temps. Pas besoin d\'utiliser de guillemets')
     parser.add_argument('--export-user-conf', '-e', action='store_true',
                         help="Exporte la configuration utilisateur au format JSON et termine")
-    parser.add_argument('--import-user-conf', '-i', type=str, nargs=1, default='', metavar='user_conf.json',
-                        help="Utilise la configuration utilisateur depuis un fichier")
+    parser.add_argument('--import-user-conf', '-i', type=str, nargs=1, default='user-conf.yaml',
+                        metavar='user-conf.yaml',
+                        help="Utilise la configuration utilisateur depuis un fichier YAML")
+    # parser.add_argument('--gns-project-id','-p',type=str,nargs=1,default='AUTO',metavar='gns3_project_name',
+    #                    help="ID du projet GNS3 à utiliser. Par défaut, utilise celui qui est ouvert") #flemme
     vals = parser.parse_args()
     return vals
 
 
-if __name__ == '__main__':
-    vals = parse_cli()
+def init_files():
+    try:
+        open('user-conf.yaml', 'r')
+    except FileNotFoundError:
+        f = open('user-conf.yaml', 'w')
+        f.write(default_yaml)
+        f.close()
 
-    if len(vals.import_user_conf) > 0:
-        f = open(vals.import_user_conf[0], 'r')
-        user_config = json.load(f)
-    else:
-        user_config = config_custom
-
-    if vals.export_user_conf:
-        print(json.dumps(user_config, indent=2, sort_keys=False))
-        exit(0)
     try:
         os.mkdir('output')
     except FileExistsError:
         pass
 
+
+if __name__ == '__main__':
+    init_files()
+    vals = parse_cli()
+
+    # récupère la topologie GNS3, les routeurs etc...
     routers, gs, project_id, liens = get_gns_conf()
 
     if vals.show_topology:
@@ -560,35 +581,43 @@ if __name__ == '__main__':
         exit(0)
 
     if vals.gen_skeleton:
-        print(json.dumps(generate_skeleton(list(routers.values()), liens), indent=2, sort_keys=False))
+        print(yaml.dump(data=generate_skeleton(list(routers.values()), liens), indent=2, sort_keys=False))
         exit(0)
 
-    cmd = " ".join(vals.global_cmd)
+    user_config = load_user_conf(vals.import_user_conf)
+
+    if vals.export_user_conf:
+        print(json.dumps(user_config, indent=2, sort_keys=False))
+        exit(0)
+
+    # partie des commandes global (-g)
     if len(vals.global_cmd) > 0:
+        cmd = " ".join(vals.global_cmd)
         print(f"Exécution de la commande `{cmd}` sur tous les routeurs")
+        for router in routers.values():
+            console = Console.from_router(router)
+            console.write_cmd(b'\r')
+            console.write_cmd(cmd.encode('ascii', 'ignore'))
+        exit(0)
+
+    # partie de génération des confs
     for router in routers.values():
         conf = generate_conf(resolve_router_config(router))
         console = Console.from_router(router)
         if vals.apply:
             configure_router(router, conf, console)
-        if len(vals.global_cmd) > 0:
-            console.write_cmd(b'\r')
-            console.write_cmd(cmd.encode('ascii', 'ignore'))
-
-    if len(vals.global_cmd):
-        exit(0)  # on ne veut pas afficher les labels à chaque commande
     print("Les fichiers configurations pour les routeurs ont été écrits dans le dossier `./output`")
-
     if not vals.apply:
         print("Si vous désirez envoyer automatiquement les configurations aux routeur, relancez"
               " ce programme avec --apply")
 
+    # partie de génération des jolis dessins
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
     delete_drawings(project)
     if vals.delete_labels:
         exit(0)
-    if vals.hide_labels:
+    if vals.hide_labels:  # oui c'est bizarre c'est inversé
         display_tracked_subnets(project, liens)
         display_router_ids(project, routers)
         display_costs(project, routers)

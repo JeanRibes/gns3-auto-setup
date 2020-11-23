@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "$id": "https://raw.githubusercontent.com/JeanRibes/gns3-auto-setup/master/user-conf-schema.json",
+  "title": "Configuration utilisateur",
+  "type": "object",
+  "properties": {
+    "templates": {
+      "type": "object",
+      "properties": {
+        "router": {
+          "$ref": "#/definitions/template"
+        },
+        "interface": {
+          "$ref": "#/definitions/template"
+        }
+      }
+    },
+    "default_router_classes": {
+      "$ref": "#/definitions/classes"
+    },
+    "default_interface_classes": {
+      "$ref": "#/definitions/classes"
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/classe"
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/link"
+      }
+    },
+    "routers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "$ref": "#/definitions/router"
+      }
+    }
+  },
+  "definitions": {
+    "template": {
+      "type": "string",
+      "title": "Template"
+    },
+    "classes": {
+      "title": "Liste de noms de classes",
+      "description": "Permet de spécifier les classes qu'utilise un routeur/interface...",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "Valeurs utilisateur"
+    },
+    "classe": {
+      "title": "Définition d'une classe",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "router",
+            "interface"
+          ]
+        },
+        "template": {
+          "$ref": "#/definitions/template"
+        },
+        "values": {
+          "$ref": "#/definitions/values"
+        },
+        "classes": {
+          "$ref": "#/definitions/classes"
+        },
+        "interface_classes": {
+          "$ref": "#/definitions/classes"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ]
+    },
+    "interface": {
+      "title": "Interface réseau",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "nom de l'interface",
+          "description": "Nom raccourcis par exemple f1/0 ou g2/0"
+        },
+        "template": {
+          "$ref": "#/definitions/template"
+        },
+        "values": {
+          "$ref": "#/definitions/values"
+        },
+        "classes": {
+          "$ref": "#/definitions/classes"
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "router": {
+      "title": "Routeur",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "Nom du routeur"
+        },
+        "classes": {
+          "title": "Classes de ce routeur",
+          "$ref": "#/definitions/classes"
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/interface"
+          }
+        },
+        "template": {
+          "$ref": "#/definitions/template"
+        },
+        "values": {
+          "$ref": "#/definitions/values"
+        },
+        "disable": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "link": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "interface_classes": {
+          "title": "Classes interface",
+          "$ref": "#/definitions/classes"
+        },
+        "router_classes": {
+          "title": "Classes routeur",
+          "$ref": "#/definitions/classes"
+        },
+        "template": {
+          "$ref": "#/definitions/template"
+        },
+        "interface_values": {
+          "$ref": "#/definitions/values"
+        }
+      }
+    }
+  }
+}

@@ -101,30 +101,28 @@ pip3 install --user gns3fy==0.7.1 Jinja2==2.11.2
 Et vous avez votre réseau OSPF, BGP, mpls sans effort !
 
 ```
-usage: main.py [-h] [--gen-skeleton] [--hide-labels] [--delete-labels] [--apply] [--show-topology] [--global-cmd commande [commande ...]] [--export-user-conf] [--import-user-conf user_conf.json]
+usage: main.py [-h] [--gen-skeleton] [--hide-labels] [--delete-labels] [--apply] [--show-topology] [--global-cmd commande [commande ...]] [--export-user-conf] [--import-user-conf user-conf.yaml]
 
 Configurateur automatique de routeurs dans GNS3
 
 optional arguments:
   -h, --help            show this help message and exit
   --gen-skeleton        Affiche un squelette de configuration adapté au réseau détécté, sans configurer les routeurs.
-  --hide-labels         Crée des jolis labels dans GNS3 pour afficher les subnets, router-id et ASN
+  --hide-labels, -n     Crée des jolis labels dans GNS3 pour afficher les subnets, router-id et ASN
   --delete-labels       Efface tous les labels crées par ce programme de GNS3 puis termine.
   --apply, -a           Active l'envoi automatique des configurations aux routeurs
   --show-topology       Montre la topologie détéctée par ce script.
   --global-cmd commande [commande ...], -g commande [commande ...]
-                        Une commande qui sera exécutée sur tous les routeurs en même temps. Pas besoin d'utiliser de guillemets :)
+                        Une commande qui sera exécutée sur tous les routeurs en même temps. Pas besoin d'utiliser de guillemets
   --export-user-conf, -e
                         Exporte la configuration utilisateur au format JSON et termine
-  --import-user-conf user_conf.json, -i user_conf.json
-                        Utilise la configuration utilisateur depuis un fichier
-
+  --import-user-conf user-conf.yaml, -i user-conf.yaml
+                        Utilise la configuration utilisateur depuis un fichier YAML
 ```
 ## Personaliser des parties de la configuration
-Le fichier `config.py` vous permet de rajouter votre grain de sel. Regardez les configurations générées
+Le fichier `user-conf.yaml` vous permet de rajouter votre grain de sel. Regardez les configurations générées
 et les données JSON pour savoir comment modifier les templates.
 
-Vous pouvez aussi utiliser des fichiers JSON, mais c'est moins pratique car il faut écrire tous les templates sur une seule ligne.
 
 Le langage de template utilisé est *Jinja2*, qui a la même syntaxe que les templates *Django*.
 Attention, pour faire le rendu d'un template dans un autre, il faut faire comme suit:
@@ -141,6 +139,7 @@ Le script place les configurations qu'il a générées dans un sous-dossier ``ou
 Vous trouverez dedans la configuration Cisco mais aussi un fichier *json* qui contient toutes les données utilisées
 pour générer la configuration. Ça peut vous être utile pour personaliser les templates.
 
+Pour éditer le fichier YAML, si vous utilisez un IDE Jetbrains, vous pouvez ajouter le JSON-Schema pour faire la validation.
 ## Problèmes
 L'allocation des **ASN**, des **router-id** et des **subnets IPv4** n'est pas déterministe et peut changer entre
 si vous rajoutez des routeurs. Je vous recommande donc de ne pas faire de ``write`` sur les routeurs
@@ -190,12 +189,16 @@ Si c'est trop agaçant vous pouvez utiliser le programme avec ``--hide-labels`` 
 avoir comme clés ip_network, ip_end, ip_mask et ip_prefixlen, toutes configurables & en ipv4 et v6
 * [ ] avoir un template par défaut pour les ``edge devices`` et les rajouter dans la représentation interne
 * [ ] avoir des templates par défaut pou FRRrouting & Quagga
+
+### Pistes pour une interfaces graphique
+Rapide et stylé: un éditer JSON-schema: [json-editor](https://json-editor.github.io/json-editor/) et on génère le schéma
+ave [jsonchema.net](https://jsonschema.net/home)
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
 
 ### Crédits
  * Le package [gns3fy](https://github.com/davidban77/gns3fy) de David Flores
- * Helm pour l'inspiration des templates/values
+ * Helm pour l'inspiration des templates/values et le YAML
 # Format de données
 
 Les données de configuration (la représentation interne) apparaissent dans le dossier `ouput` au format JSON.
@@ -234,12 +237,12 @@ custom_config = {
             'interface_values': {},
         }],
     'routers': { # notez que c'est bien un dict() et pas une liste !
-        {
+        "name":{
             'disable': False,
             'classes': [],
             'template': "",
             'interfaces': { # c'est toujours pas une liste !
-                {
+                "name":{
                     'template': "",
                     'classes': [],
                     'values': {},
