@@ -134,7 +134,8 @@ class Interface:
 
     def get_ip4(self):
         # on fait de la magie avec les IPv4 pour utiliser des sous-réseaux de 2 hôtes
-        return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)} 255.255.255.252"
+       return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)} 255.255.255.252"
+        #return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)}/30" # pour FRR/Quagga
 
 
 router = {

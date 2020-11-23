@@ -15,6 +15,7 @@ from jinja2 import Template
 from config import config_custom
 from data import *
 
+user_config = {}
 MAGIC_SVG = '<!-- fait par le script -->'
 
 
@@ -26,7 +27,7 @@ def enumerate_routers(gs, project_id):
     for node in gs.get_nodes(project_id):
         obj = Node(project_id=project_id, node_id=node['node_id'], connector=gs)
         obj.get()
-        if obj.node_type == 'dynamips':
+        if obj.node_type == 'dynamips' or obj.name.startswith('R'):
             routers.add(Router.from_node(obj, str(IPv4Address(router_i)), asn=asn))
             router_i += 1
             asn += 1
@@ -85,8 +86,6 @@ def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
 def get_gns_conf():
     gs = gns3fy.Gns3Connector("http://localhost:3080", user="admin")
     project_id = list(filter(lambda p: p['status'] == 'opened', gs.get_projects()))[0]['project_id']
-    print(f"Utilisation du projet GNS3 uid# {project_id}")
-    print('--------------------------------------------------------------------')
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
 
@@ -149,7 +148,7 @@ def r2(classnames: Set[str]) -> Set[str]:
     if len(classnames) == 0:
         return set()
     discovered = set()
-    for classe in config_custom['classes']:
+    for classe in user_config['classes']:
         if classe['name'] in classnames:
             discovered.update(safe_get_value(classe, [], 'classes'))
     initial = set(classnames)
@@ -164,7 +163,7 @@ def resolve_classes(classe_names: List[str], type) -> List[dict]:
     all_class_names = r2(set(classe_names))
     l = []
     for classe_name in all_class_names:
-        classe_obj: dict = find(config_custom['classes'], 'name', classe_name)
+        classe_obj: dict = find(user_config['classes'], 'name', classe_name)
         if classe_obj['type'] == type:
             classe_obj = deepcopy(classe_obj)
             classe_obj.pop('classes', None)
@@ -200,7 +199,7 @@ def add_templates(classes: List[dict]) -> str:
 
 def resolve_link_config(router_a_name: str, router_b_name: str) -> dict:
     try:
-        for link in config_custom['links']:
+        for link in user_config['links']:
             if link['name'] == (router_a_name + '<-->' + router_b_name) or link['name'] == (
                     router_b_name + '<-->' + router_a_name):
                 return link
@@ -216,9 +215,9 @@ def resolve_router_config(router: Router):
     :return:
     """
     conf = gen_tree(router)
-    template = safe_get_value(config_custom, '', 'templates', 'router')
-    cc = safe_get_value(config_custom, {}, 'routers', router.name)
-    classes = resolve_classes(safe_get_value(cc, [], 'classes') + config_custom['default_router_classes'], 'router')
+    template = safe_get_value(user_config, '', 'templates', 'router')
+    cc = safe_get_value(user_config, {}, 'routers', router.name)
+    classes = resolve_classes(safe_get_value(cc, [], 'classes') + user_config['default_router_classes'], 'router')
     apply_classes_values(classes, conf)
 
     if cc.get('values'):
@@ -236,7 +235,7 @@ def resolve_router_config(router: Router):
         int_conf['disable'] = safe_get_value(user_def_interface, False, 'disable')
         if_classes = resolve_classes(
             safe_get_value(user_def_interface, [], 'classes')
-            + config_custom['default_interface_classes']
+            + user_config['default_interface_classes']
             + conf['interface_classes'] if interface.peer is not None else []  # fait en sorte
             # de ne pas configurer de protocole de routage sur une interface de bordure
             # les interfaces externes doivent être config à la main
@@ -245,7 +244,7 @@ def resolve_router_config(router: Router):
         if user_def_interface.get('values'):
             int_conf.update(user_def_interface['values'])
         int_conf['resolved_classes'] = if_classes
-        int_conf['template'] = safe_get_value(config_custom, '', 'templates', 'interface')
+        int_conf['template'] = safe_get_value(user_config, '', 'templates', 'interface')
         int_conf['interface_template'] = safe_get_value(user_def_interface, '', 'template')
 
         if interface.peer is not None:
@@ -491,7 +490,6 @@ def generate_skeleton(routers: List[Router], liens: List[Lien]) -> dict:
                 'classes': [],
                 'values': {},
             }
-
     return main
 
 
@@ -503,14 +501,14 @@ def parse_cli():
                                                                     "les subnets, router-id et ASN")
     parser.add_argument('--delete-labels', action='store_true', help="Efface tous les labels crées par ce programme"
                                                                      " de GNS3 puis termine.")
-    parser.add_argument('--apply','-a', action='store_true',
+    parser.add_argument('--apply', '-a', action='store_true',
                         help="Active l'envoi automatique des configurations aux routeurs")
     parser.add_argument('--show-topology', action='store_true', help="Montre la topologie détéctée par ce script.")
     parser.add_argument('--global-cmd', '-g', type=str, nargs='+', default=[], metavar='commande',
                         help='Une commande qui sera exécutée sur tous les routeurs en même temps. Pas besoin d\'utiliser de guillemets')
-    parser.add_argument('--export-user-conf','-e', action='store_true',
+    parser.add_argument('--export-user-conf', '-e', action='store_true',
                         help="Exporte la configuration utilisateur au format JSON et termine")
-    parser.add_argument('--import-user-conf','-i', type=str, nargs=1, default='', metavar='user_conf.json',
+    parser.add_argument('--import-user-conf', '-i', type=str, nargs=1, default='', metavar='user_conf.json',
                         help="Utilise la configuration utilisateur depuis un fichier")
     vals = parser.parse_args()
     return vals
@@ -519,29 +517,28 @@ def parse_cli():
 if __name__ == '__main__':
     vals = parse_cli()
 
-    if len(vals.import_user_conf)>1:
-        f = open(vals.import_user_conf,'r')
-        config_custom = json.load(f)
+    if len(vals.import_user_conf) > 0:
+        f = open(vals.import_user_conf[0], 'r')
+        user_config = json.load(f)
+    else:
+        user_config = config_custom
 
     if vals.export_user_conf:
-        print(json.dumps(config_custom, indent=2, sort_keys=False))
+        print(json.dumps(user_config, indent=2, sort_keys=False))
         exit(0)
     try:
         os.mkdir('output')
     except FileExistsError:
         pass
 
-
-
     routers, gs, project_id, liens = get_gns_conf()
 
-    show_topology(routers)
     if vals.show_topology:
+        show_topology(routers)
         exit(0)
 
     if vals.gen_skeleton:
-        pp = pprint.PrettyPrinter(width=150, indent=4, sort_dicts=False)
-        pp.pprint(generate_skeleton(routers.values(), liens))
+        print(json.dumps(generate_skeleton(routers.values(), liens), indent=2, sort_keys=False))
         exit(0)
     cmd = " ".join(vals.global_cmd)
     if len(vals.global_cmd) > 0:

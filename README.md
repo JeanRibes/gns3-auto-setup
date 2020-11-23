@@ -130,7 +130,8 @@ Si c'est trop agaçant vous pouvez relancer le programme avec ``--delete-labels`
  * [x] option pour générer juste un squelette des configs ?
  * [x] générer des adresses IPv4 qui font des réseaux en /30 pour être + économe
  * [ ] séparer le réseau et l'adresse dans le JSON pour pouvoir configurer facilement BGP
-
+avoir comme clés ip_network, ip_end, ip_mask et ip_prefixlen, toutes configurables & en ipv4 et v6
+* [ ] avoir un template par défaut pour les ``edge devices`` et les rajouter dans la représentation interne
 ----
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
 ### Crédits
