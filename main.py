@@ -1,22 +1,39 @@
 #!/usr/bin/env python3
 import argparse
+import ipaddress
 import json
 import os
-import pprint
 import re
+import sys
 import time
 from copy import deepcopy
 from socket import *
 from typing import Set
-
-from gns3fy import gns3fy, Project
 from jinja2 import Template
+from gns3fy import gns3fy, Project, Link
 
 from config import config_custom
 from data import *
 
 user_config = {}
 MAGIC_SVG = '<!-- fait par le script -->'
+
+
+def construct_ipv4(network: str, end: int) -> str:
+    """
+    Construit une adresse IPv4 à partir du réseau et de l'adresse.
+    Ce n'est pas juste une concaténation de strings, mais bien un calcul
+    qui marche même avec des tailles de préfixes différentes de 8/16/24/32
+    :param network: le réseau au format a.b.c.0
+    :param end: un entier, exemple 1 pour faire a.b.c.1
+    :return:
+    """
+    try:
+        end = int(end)
+        net = int(IPv4Address(network))
+        return str(IPv4Address(net + end))
+    except ipaddress.AddressValueError:
+        return "erreur"
 
 
 def enumerate_routers(gs, project_id):
@@ -110,18 +127,21 @@ def gen_tree(router: Router) -> dict:
             ifs.append({
                 'name': interface.name,
                 'lien': interface.lien.name,
-                'ip_network4': interface.get_ip4(),
-                'ip_network6': interface.lien.network6,
-                'ip_end6': interface.end6(),
+                'ipv4_network': str(interface.lien.network4),
+                'ipv4_netmask': '255.255.255.252',
+                'ipv4_prefixlen': 30,
+                'ipv6_network': str(interface.lien.network6),
+                'ipv6_prefixlen': 64,
+                'ip_end': interface.get_ip_end(),
                 'uid': interface.lien.uid,
             })
         else:
             ifs.append({
                 'name': interface.name,
                 'lien': 'edge',
-                'ip_network4': 'configurez manuellement',
-                'ip_network6': 'configurez manuellement',
-                'ip_end6': '1',
+                'ipv4_network': 'configurez manuellement',
+                'ipv6_network': 'configurez manuellement',
+                'ip_end': '1',
             })
     return {
         'name': router.name,
@@ -208,7 +228,7 @@ def resolve_link_config(router_a_name: str, router_b_name: str) -> dict:
         return None
 
 
-def resolve_router_config(router: Router):
+def resolve_router_config(router: Router) -> dict:
     """
     construit la config et fait le templating des templates (sans appliquer les valeurs)
     :param router:
@@ -251,8 +271,8 @@ def resolve_router_config(router: Router):
             lien_custom = resolve_link_config(router.name, interface.peer.name)
             int_conf['peer'] = {
                 'asn': interface.peer.asn,
-                'ip4': interface.peer_interface.get_ip4().split(' ')[0],  # pour virer le réseai
-                'ip6': interface.peer_interface.get_ip6().split('/')[0],
+                'ipv4': interface.peer_interface.get_ip4(),
+                'ipv6': interface.peer_interface.get_ip6(),
                 'name': interface.peer.name,
                 'interface': interface.peer_int,
             }
@@ -271,9 +291,8 @@ def resolve_router_config(router: Router):
                 int_conf.update(lien_custom['interface_values'])
 
             # re-mapping
-            interface.lien.network6 = int_conf['ip_network6']
-            # interface.lien.network4 = int_conf['ip_network4']
         conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
+    conf['router_template'] = safe_get_value(cc, '', 'template')
     conf['template'] = template
 
     # re-mapping de la config utilisateur, pour les dessins GNS3
@@ -288,10 +307,12 @@ def resolve_router_config(router: Router):
 def generate_conf(conf: dict) -> str:
     conf_txt = open(f"output/conf_{conf['name']}.cfg", 'w+')
     conf_json = open(f"output/conf_{conf['name']}.json", 'w+')
-    # conf_txt = open(f"output/conf_{conf['name']}_{int(time.time())}.cfg",'w+')
-    # conf_json = open(f"output/conf_{conf['name']}_{int(time.time())}.json",'w+')
 
-    rendered = Template(conf['template']).render(Template=Template, router=conf, ospf_process=1)
+    rendered = Template(conf['template']).render(
+        Template=Template,
+        router=conf,
+        construct_ipv4=construct_ipv4  # fontion qui permet de créer l'adresse IPv4 avec l'adresse réseau
+    )
 
     # https://stackoverflow.com/questions/28901452/reduce-multiple-blank-lines-to-single-pythonically
     rendered = re.sub(r'\n\s*\n', '\n', rendered)
@@ -379,6 +400,7 @@ def configure_router(router: Router, conf: str, console: Console):
         console.write_conf(partie)
         time.sleep(0.5)
         print('.', end='')
+        sys.stdout.flush()
     time.sleep(1)
     print(f"{router.name} configuré !")
 
@@ -538,8 +560,9 @@ if __name__ == '__main__':
         exit(0)
 
     if vals.gen_skeleton:
-        print(json.dumps(generate_skeleton(routers.values(), liens), indent=2, sort_keys=False))
+        print(json.dumps(generate_skeleton(list(routers.values()), liens), indent=2, sort_keys=False))
         exit(0)
+
     cmd = " ".join(vals.global_cmd)
     if len(vals.global_cmd) > 0:
         print(f"Exécution de la commande `{cmd}` sur tous les routeurs")
@@ -548,9 +571,12 @@ if __name__ == '__main__':
         console = Console.from_router(router)
         if vals.apply:
             configure_router(router, conf, console)
-        if len(vals.global_cmd) > 1:
+        if len(vals.global_cmd) > 0:
             console.write_cmd(b'\r')
             console.write_cmd(cmd.encode('ascii', 'ignore'))
+
+    if len(vals.global_cmd):
+        exit(0)  # on ne veut pas afficher les labels à chaque commande
     print("Les fichiers configurations pour les routeurs ont été écrits dans le dossier `./output`")
 
     if not vals.apply:

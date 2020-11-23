@@ -1,9 +1,9 @@
-from collections import namedtuple
+from dataclasses import dataclass
 from dataclasses import dataclass
 from ipaddress import IPv4Address
-from typing import List, Optional, Union
+from typing import List, Union
 
-from gns3fy import Node, Link
+from gns3fy import Node
 
 
 @dataclass
@@ -127,15 +127,16 @@ class Interface:
         return self.name
 
     def get_ip6(self):
-        return f"{self.lien.network6}::{ord(self.side) - 96}/64"
+        return f"{self.lien.network6}::{ord(self.side) - 96}"
 
-    def end6(self) -> str:
-        return str(ord(self.side) - 96)
+    def get_ip_end(self) -> int:
+        # 1 pour side_a, 2 pour side_b
+        return ord(self.side) - 96
 
     def get_ip4(self):
         # on fait de la magie avec les IPv4 pour utiliser des sous-réseaux de 2 hôtes
-       return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)} 255.255.255.252"
-        #return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)}/30" # pour FRR/Quagga
+        return f"{IPv4Address(int(self.lien.network4) + ord(self.side) - 96)}"
+        # return f"{IPv4Address( int(self.lien.network4)+ord(self.side) - 96)}/30" # pour FRR/Quagga
 
 
 router = {

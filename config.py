@@ -7,20 +7,22 @@ default_router_template = """#### configuration de {{router.name}}
 ipv6 unicast-routing
             
 {% for interface in router.interfaces %}
-{{Template(interface.template).render(Template=Template,interface=interface,router=router)}}
+{{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4)}}
 #--
 {% endfor %}
             
 # les templates provenant des classes seront remplaces a la 2e passe de templating
 {% for classe in router.resolved_classes %}
 # classe {{classe.name}}
-{{Template(classe.template).render(Template=Template,classe=classe,router=router)}}
+{{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4)}}
 #--
 # fin classe {{classe.name}}
 !
 {% endfor %}
             
 {% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}
+# template specifique
+{{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4)}}
 # fin de la configuration de {{router.name}}
 """
 
@@ -34,11 +36,11 @@ interface {{interface.name}}
 {% endif %}
     no shutdown
     ipv6 enable
-    ipv6 address {{interface.ip_network6}}::{{interface.ip_end6}}/64
-    ip address {{interface.ip_network4}}
+    ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}
+    ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}
     {% for classe in interface.resolved_classes %}
 # classe {{classe.name}}
-    {{Template(classe.template).render(interface=interface,router=router)}}
+    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}
 # fin classe {{classe.name}}
 {% endfor %}
 #template specifique a cette interface
@@ -60,21 +62,20 @@ config_custom = {  # permet de rajouter des parametres personalises et les templ
         {
             'name': 'ospf6-router',
             'type': 'router',  # on ne peut pas appliquer une classe a un routeur ET une interface
-            'template': """ipv6 router ospf {{router.ospf_process}}
+            'template': """ipv6 router ospf {{router.ospf6_process}}
     redistribute connected
     router-id {{router.router_id}}
   exit""",
             'interface_classes': ['ospf6-interface'],  # les interfaces de ce routeur auront ces classes
             'values': {
-                'ospf_process': 1,
-                'ospf_area': 0,
-            },
+                'ospf6_process': 1,
+                'ospf6_area': 0,
+            }
         },
         {
             'name': 'ospf4-interface',
             'type': 'interface',
             'template': """ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}
-    ip address {{interface.ip_network4}}
             """
         },
         {
@@ -94,7 +95,7 @@ config_custom = {  # permet de rajouter des parametres personalises et les templ
         {
             'name': 'ospf6-interface',
             'type': 'interface',
-            'template': "ipv6 ospf {{router.ospf_process}} area {{router.ospf_area}}"
+            'template': "ipv6 ospf {{router.ospf6_process}} area {{router.ospf6_area}}",
         },
         {
             'name': 'mpls-interface',
@@ -114,10 +115,12 @@ config_custom = {  # permet de rajouter des parametres personalises et les templ
 router bgp {{router.asn}}
     bgp router-id {{router.router_id}}
     {% for interface in router.interfaces %}{% if interface.peer %}
-    neighbor {{interface.peer.ip4}} remote-as {{interface.peer.asn}}
-    neighbor {{interface.peer.ip4}} activate
-    neighbor {{interface.peer.ip6}} remote-as {{interface.peer.asn}}
-    neighbor {{interface.peer.ip6}} activate
+    neighbor {{interface.peer.ipv4}} remote-as {{interface.peer.asn}}
+    address-family ipv6 unicast
+        neighbor {{interface.peer.ipv6}} remote-as {{interface.peer.asn}}
+        neighbor {{interface.peer.ipv6}} activate
+    exit-address-family
+    neighbor {{interface.peer.ipv4}} activate
     {% endif %}{% endfor %}
     address-family ipv4 unicast
         redistribute connected
@@ -153,8 +156,8 @@ exit
     'routers': {
         'R1': {
             'disable': False,
-            'classes': ['ospf6-router'],
-            'template': 'no ip router ospf\n',
+            'classes': [],
+            'template': '#RR11\nrouter ospf {{router.ospf4_process}}\n network 192.168.0.0 255.255.255.0 area {{router.ospf4_area}}\nexit',
             'interfaces': {
                 'f0/0': {
                     'classes': [],
@@ -172,10 +175,13 @@ exit
                 },
                 # 'f2/0': {'disable': True},
                 'f1/0': {
-                    'template': 'ip address 192.168.0.1 255.255.255.0',
+                    'template': '',
                     'values': {
-                        'ip_network6': '2001:1:1:1',
-                        'ip_end6': '1',
+                        'ipv6_network': '2001:1:1:1',
+                        'ip_end': '1',
+                        'ipv6_prefixlen': 64,
+                        'ipv4_network': '192.168.0.0',
+                        'ipv4_netmask': '255.255.255.0',
                     }
                 },
             },
