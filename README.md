@@ -211,7 +211,7 @@ La commande ``python3 main.py --gen-skeleton`` vous crée un squelette vide de c
 que vous pouvez remplir là où vous en avez besoin.
 
 ## configuration utilisateur
-```python
+```yaml
 # user-conf.yaml
 ---
 default_router_classes: # classes qui serotn appliquées par défaut à tous les routeurs
