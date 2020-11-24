@@ -77,7 +77,7 @@ python3 -m venv venv
 virtualenv -p /usr/bin/python3 venv
 source venv/bin/activate # vous devez tapez cette ligne à chaque fois que vous ré-ouvez un terminal dans le dossier gns3-auto-setup 
 # s'il n'y a pas (venv) au début de votre ligne de commande il faut installer python3-venv ou virtualenv
-pip3 install gns3fy==0.7.1 Jinja2==2.11.2
+pip install -r requirements.txt 
 ```
 ## Sans virtualenv
 ```
@@ -117,7 +117,7 @@ optional arguments:
   --export-user-conf, -e
                         Exporte la configuration utilisateur au format JSON et termine
   --import-user-conf user-conf.yaml, -i user-conf.yaml
-                        Utilise la configuration utilisateur depuis un fichier YAML
+                        Utilise la configuration utilisateur depuis un fichier YAML (user-conf.yaml par défaut)
 ```
 ## Personaliser des parties de la configuration
 Le fichier `user-conf.yaml` vous permet de rajouter votre grain de sel. Regardez les configurations générées
@@ -133,6 +133,8 @@ Il faut passer la classe ``Template`` en variable pour que les templates enfants
 La configuration d'exemple fait cela pour les *interfaces* et les *classes*.
 
 Pour trouver les noms des interfaces, activez dans GNS3 *View > Show/Hide interfaces labels*
+
+Tous les éléments qui apparaissent dans les fichiers *JSON* du dossier `output` sont utilisables dans les templates (notamment les *values*).
 
 ### Comment debug
 Le script place les configurations qu'il a générées dans un sous-dossier ``output`` du dossier courant.
@@ -159,11 +161,11 @@ Sinon il est aussi possible de rajouter une 'anti-configuration' qui désactive 
   pour avoir un saut de ligne (ligne vide), soit vous changez le fonctionnement soit vous faites
   comme Cisco dans ``show running-config``, mettez un point d'exclamation `!` sur la ligne.
 
-* Si vous modifiez l'adresse IP par défaut, ces modifications ne sont pas reflétées dans ``interface.peer`` (embêtant pour BGP)
+* Si vous modifiez l'adresse IP par défaut, ces modifications ne sont pas reflétées dans ``interface.peer`` (embêtant pour BGP). pareil pour le *router-id* et l'*ASN*
 ## Diagramme dans GNS3
 Ce script crée automatiquement des petites étiquettes/dessins dans GNS3 pour afficher le
 sous-réseau actif sur un lien (IPv4 et IPv6).
-Il affiche aussi le router-id et l'ASN par dessus l'icône du routeur.
+Il affiche aussi le *router-id* et l'*ASN* par dessus l'icône du routeur.
 
 ### Je peux pas bouger les dessins
 C'est normal, ils sont verrouillées pour que le script les retrouve et puisse les supprimer.
@@ -178,7 +180,7 @@ Si c'est trop agaçant vous pouvez utiliser le programme avec ``--hide-labels`` 
 
 
 ## TODO
- * [ ] pouvoir tagger les routeurs & interfaces en groupes
+ * [x] pouvoir tagger les routeurs & interfaces en groupes (en fait il suffit de faire une super-classe)
  * [x] faire en sorte que l'utilisateur fournisse les templates (jinja2 ? pug ?)
  * [x] pouvoir assigner des coûts aux liens pour du Traffic engineering (et les afficher avec des dessins GNS3)
  * [ ] configurer les conteneurs Docker
@@ -188,12 +190,13 @@ Si c'est trop agaçant vous pouvez utiliser le programme avec ``--hide-labels`` 
  * [x] séparer le réseau et l'adresse dans le JSON pour pouvoir configurer facilement BGP
 avoir comme clés ip_network, ip_end, ip_mask et ip_prefixlen, toutes configurables & en ipv4 et v6
 * [ ] avoir un template par défaut pour les ``edge devices`` et les rajouter dans la représentation interne
-* [ ] avoir des templates par défaut pou FRRrouting & Quagga
+* [x] avoir des templates par défaut pour FRRrouting & Quagga
 
 ### Pistes pour une interfaces graphique
-Rapide et stylé: un éditer JSON-schema: [json-editor](https://json-editor.github.io/json-editor/) et on génère le schéma
-ave [jsonchema.net](https://jsonschema.net/home)
-----
+Rapide et stylé: un éditer JSON-schema: [json-editor](https://json-editor.github.io/json-editor/) 
+
+---
+
 > est-ce que j'ai gagné du temps en automatisant mon travail ? c'est pas sûr
 
 ### Crédits
@@ -209,61 +212,187 @@ que vous pouvez remplir là où vous en avez besoin.
 
 ## configuration utilisateur
 ```python
-custom_config = {
-    'templates': {
-        'router': "",
-        'interface': "",
-    },
-    'default_router_classes': [], # appliqué à tous les routeurs
-    'default_interface_classes': [],
-    'classes': [{
-        'name': "<default>",
-        'type': "<router|interface>",
-        'template': "",
-        'values': {
-            'a': 'b',
-        },
-        'classes':[], # inclusion récursive
-        'interface_classes': [], # si la classe est appliquée à un routeur, les interfaces de routeur se verront appliquer ces classes
-        
-    }],
-    'links': [
+# user-conf.yaml
+---
+default_router_classes: # classes qui serotn appliquées par défaut à tous les routeurs
+  - ospf6-router
+  - ospf4-router
+  - bgp-router
+default_interface_classes: [ ] # pareil mais pour toutes les interfaces de tous les routeurs
+classes:
+  - name: ospf6-router
+    type: router # une classe peut être de type interface OU routeur
+    template: |-
+      ipv6 router ospf {{router.ospf6_process}}
+        redistribute connected
+        router-id {{router.router_id}}
+      exit
+    interface_classes: # si un routeur a cette classe, les classes ci-dessous seront appliquées à toutes les interfaces de ce routeur
+      - ospf6-interface
+    values: # ces valeurs seront insérées dans le contexte de l'objet: interface ou routeur
+      ospf6_process: 1 # sera accessible avec {{router.ospf6_process}}
+      ospf6_area: 0
+  - name: ospf4-interface
+    type: interface
+    template: |-
+      ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}
+  - name: ospf4-router
+    type: router
+    template: |-
+      router ospf {{router.ospf4_process}}
+        router-id {{router.router_id}}
+        redistribute connected subnets
+      exit
+    values:
+      ospf4_process: 4
+      ospf4_area: 0
+    interface_classes:
+      - ospf4-interface
+    classes:
+      - mpls-router
+  - name: ospf6-interface
+    type: interface
+    template: ipv6 ospf {{router.ospf6_process}} area {{router.ospf6_area}}
 
-        {
-            'name': "",
-            'interface_classes': [], # ces clases seront appliquées aux interfaces de ce lien (sur chaque routeur)
-            'router_classes': [], # celles-ci seront appliquées aux routeurs des deux bouts du lien
-            'template': "",
-            'interface_values': {},
-        }],
-    'routers': { # notez que c'est bien un dict() et pas une liste !
-        "name":{
-            'disable': False,
-            'classes': [],
-            'template': "",
-            'interfaces': { # c'est toujours pas une liste !
-                "name":{
-                    'template': "",
-                    'classes': [],
-                    'values': {},
-                }
-            },
-            'values': {},
-        }}
-}
+  - name: mpls-interface
+    type: interface
+    template: mpls ip
 
+  - name: mpls-router
+    type: router
+    template: |-
+      ip cef
+      ipv6 cef
+    interface_classes:
+      - mpls-interface
+  - name: bgp-router
+    type: router
+    template: |-
+      router bgp {{router.asn}}
+          bgp router-id {{router.router_id}}
+      {% for interface in router.interfaces %}
+        {% if interface.peer %}
+          neighbor {{interface.peer.ipv4}} remote-as {{interface.peer.asn}}
+          neighbor {{interface.peer.ipv4}} activate
+        {% endif %}
+      {% endfor %}
+
+          address-family ipv6 unicast
+      {% for interface in router.interfaces %}
+        {% if interface.peer %}
+              neighbor {{interface.peer.ipv6}} remote-as {{interface.peer.asn}}
+              neighbor {{interface.peer.ipv6}} activate
+        {% endif %}
+      {% endfor %}
+            redistribute connected
+          exit-address-family
+
+          address-family ipv4 unicast
+              redistribute connected
+          exit-address-family
+      exit
+  - name: ospf6-cost
+    type: interface
+    template: ipv6 ospf cost {{interface.ospf6_cost}}
+links:
+  - name: R1<-->R3 #ça marche dans les deux sens
+    interface_classes: [ ]
+    router_classes: [ ]
+routers:
+  - name: R1
+    disable: false
+    classes: [mpls-router,]
+    template: ""
+    interfaces:
+      - name: f0/0 # c'est le nom qu'on trouve dans GNS3
+        classes: [mpls-interface,] # ces classes seront appliquées à cette interface
+        template: "no ipv6 ospf 1 area 1"
+        values:
+          ip_end6: '101' # permet de changer le numéro de machine dans le réseau
+
+      - name: f5/0
+        disable: false
+        classes:
+          - ospf6-cost
+        values:
+          ospf6_cost: 5
+
+      - name: f1/0
+        template: ''
+        values: # exemple de configuration manuelle d'une interface qui n'est pas reliée à un autre routeur (et donc elle ne sera pas configurée automatiquement)
+          ipv6_network: '2001:1:1:1'
+          ip_end: '1'
+          ipv6_prefixlen: 64
+          ipv4_network: 192.168.0.0
+          ipv4_netmask: 255.255.255.0
+    
+    values: # ces valeurs seront appliquées au routeur, ici on change le router-id (pas une bonne idée)
+      router_id: 10.0.0.10
+
+  - name: R2
+    disable: true
+    template: |-
+      router rip
+        redistribute connected
+      exit
+templates:
+  router: |-
+    #### configuration de {{router.name}}
+    ipv6 unicast-routing
+    no ip domain lookup
+
+    {% for interface in router.interfaces %}
+    {{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4)}}
+    #--
+    {% endfor %}
+
+    # les templates provenant des classes seront remplaces a la 2e passe de templating
+    {% for classe in router.resolved_classes %}
+    # classe {{classe.name}}
+    {{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4)}}
+    #--
+    # fin classe {{classe.name}}
+    {% endfor %}
+
+    {% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}
+
+    # template specifique
+    {{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4)}}
+    #fin de la configuration de {{router.name}}
+
+
+  interface: |2-
+
+    interface {{interface.name}}
+    {% if interface.disable %}
+    # cette interface ne doit pas etre configuree
+    {% endif %}
+    {% if interface.peer %}
+      description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}
+    {% endif %}
+      no shutdown
+      ipv6 enable
+      ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}
+      ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}
+      {% for classe in interface.resolved_classes %}# classe {{classe.name}}
+        {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}
+        # fin classe {{classe.name}}
+      {% endfor %}
+      #template specifique a cette interface
+        {{ interface.interface_template }}
+    exit
+    # fin interface {{interface.name}}
 ```
 
 ## représentation interne disponible dans les templates
 ```json
- {
-    "announce_internal": true,
+{
     "asn": 101,
     "disable": false,
     "interface_classes": [
+        "ospf4-interface",
         "ospf6-interface",
-        "mpls-interface",
-        "ospf4-interface"
+        "mpls-interface"
     ],
     "interfaces": [
         {
@@ -293,22 +422,22 @@ custom_config = {
                     "type": "interface"
                 },
                 {
-                    "name": "ospf6-cost",
-                    "template": "ipv6 ospf cost {{interface.ospf6_cost}}",
-                    "type": "interface"
-                },
-                {
                     "name": "ospf6-interface",
                     "template": "ipv6 ospf {{router.ospf6_process}} area {{router.ospf6_area}}",
                     "type": "interface"
                 },
                 {
                     "name": "ospf4-interface",
-                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}\n            ",
+                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}",
+                    "type": "interface"
+                },
+                {
+                    "name": "ospf6-cost",
+                    "template": "ipv6 ospf cost {{interface.ospf6_cost}}",
                     "type": "interface"
                 }
             ],
-            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n    description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n    no shutdown\n    ipv6 enable\n    ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n    ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n    {% for classe in interface.resolved_classes %}\n# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n# fin classe {{classe.name}}\n{% endfor %}\n#template specifique a cette interface\n    {{ interface.interface_template }}\n  exit\n# fin interface {{interface.name}}",
+            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  ipv6 enable\n  ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n    # fin classe {{classe.name}}\n  {% endfor %}\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
             "uid": "2570445c-69f9-4316-b399-3f034077bd04"
         },
         {
@@ -322,7 +451,7 @@ custom_config = {
             "lien": "edge",
             "name": "f1/0",
             "resolved_classes": [],
-            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n    description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n    no shutdown\n    ipv6 enable\n    ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n    ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n    {% for classe in interface.resolved_classes %}\n# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n# fin classe {{classe.name}}\n{% endfor %}\n#template specifique a cette interface\n    {{ interface.interface_template }}\n  exit\n# fin interface {{interface.name}}"
+            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  ipv6 enable\n  ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n    # fin classe {{classe.name}}\n  {% endfor %}\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}"
         },
         {
             "disable": false,
@@ -355,11 +484,11 @@ custom_config = {
                 },
                 {
                     "name": "ospf4-interface",
-                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}\n            ",
+                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}",
                     "type": "interface"
                 }
             ],
-            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n    description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n    no shutdown\n    ipv6 enable\n    ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n    ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n    {% for classe in interface.resolved_classes %}\n# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n# fin classe {{classe.name}}\n{% endfor %}\n#template specifique a cette interface\n    {{ interface.interface_template }}\n  exit\n# fin interface {{interface.name}}",
+            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  ipv6 enable\n  ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n    # fin classe {{classe.name}}\n  {% endfor %}\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
             "uid": "dd68b3b3-1f11-4ff9-b6c1-25d38c6dd414"
         },
         {
@@ -393,11 +522,11 @@ custom_config = {
                 },
                 {
                     "name": "ospf4-interface",
-                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}\n            ",
+                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}",
                     "type": "interface"
                 }
             ],
-            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n    description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n    no shutdown\n    ipv6 enable\n    ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n    ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n    {% for classe in interface.resolved_classes %}\n# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n# fin classe {{classe.name}}\n{% endfor %}\n#template specifique a cette interface\n    {{ interface.interface_template }}\n  exit\n# fin interface {{interface.name}}",
+            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  ipv6 enable\n  ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n    # fin classe {{classe.name}}\n  {% endfor %}\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
             "uid": "bf788c6f-0c22-4da3-acf4-0849e0eeab3d"
         },
         {
@@ -432,38 +561,42 @@ custom_config = {
                 },
                 {
                     "name": "ospf4-interface",
-                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}\n            ",
+                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}",
                     "type": "interface"
                 }
             ],
-            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n    description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n    no shutdown\n    ipv6 enable\n    ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n    ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n    {% for classe in interface.resolved_classes %}\n# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n# fin classe {{classe.name}}\n{% endfor %}\n#template specifique a cette interface\n    {{ interface.interface_template }}\n  exit\n# fin interface {{interface.name}}",
+            "template": "\ninterface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  ipv6 enable\n  ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/{{interface.ipv6_prefixlen}}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n    {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n    # fin classe {{classe.name}}\n  {% endfor %}\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
             "uid": "ba76bf13-9e76-4352-a151-79d8e8a27ca3"
         }
     ],
     "name": "R1",
     "ospf4_area": 0,
-    "ospf4_process": 2,
+    "ospf4_process": 4,
     "ospf6_area": 0,
     "ospf6_process": 1,
     "resolved_classes": [
         {
             "interface_classes": [
+                "ospf4-interface"
+            ],
+            "name": "ospf4-router",
+            "template": "router ospf {{router.ospf4_process}}\n  router-id {{router.router_id}}\n  redistribute connected subnets\nexit",
+            "type": "router",
+            "values": {
+                "ospf4_area": 0,
+                "ospf4_process": 4
+            }
+        },
+        {
+            "interface_classes": [
                 "ospf6-interface"
             ],
             "name": "ospf6-router",
-            "template": "ipv6 router ospf {{router.ospf6_process}}\n    redistribute connected\n    router-id {{router.router_id}}\n  exit",
+            "template": "ipv6 router ospf {{router.ospf6_process}}\n  redistribute connected\n  router-id {{router.router_id}}\nexit",
             "type": "router",
             "values": {
                 "ospf6_area": 0,
                 "ospf6_process": 1
-            }
-        },
-        {
-            "name": "bgp-router",
-            "template": "\nrouter bgp {{router.asn}}\n    bgp router-id {{router.router_id}}\n    {% for interface in router.interfaces %}{% if interface.peer %}\n    neighbor {{interface.peer.ipv4}} remote-as {{interface.peer.asn}}\n    address-family ipv6 unicast\n        neighbor {{interface.peer.ipv6}} remote-as {{interface.peer.asn}}\n        neighbor {{interface.peer.ipv6}} activate\n    exit-address-family\n    neighbor {{interface.peer.ipv4}} activate\n    {% endif %}{% endfor %}\n    address-family ipv4 unicast\n        redistribute connected\n    exit-address-family\n    address-family ipv6 unicast\n        redistribute connected\n    exit-address-family\nexit\n!",
-            "type": "router",
-            "values": {
-                "announce_internal": true
             }
         },
         {
@@ -475,21 +608,14 @@ custom_config = {
             "type": "router"
         },
         {
-            "interface_classes": [
-                "ospf4-interface"
-            ],
-            "name": "ospf4-router",
-            "template": "router ospf {{router.ospf4_process}}\n            router-id {{router.router_id}}\n            redistribute connected subnets\n            exit",
-            "type": "router",
-            "values": {
-                "ospf4_area": 0,
-                "ospf4_process": 2
-            }
+            "name": "bgp-router",
+            "template": "router bgp {{router.asn}}\n    bgp router-id {{router.router_id}}\n{% for interface in router.interfaces %}\n  {% if interface.peer %}\n    neighbor {{interface.peer.ipv4}} remote-as {{interface.peer.asn}}\n    neighbor {{interface.peer.ipv4}} activate\n  {% endif %}\n{% endfor %}\n\n    address-family ipv6 unicast\n{% for interface in router.interfaces %}\n  {% if interface.peer %}\n        neighbor {{interface.peer.ipv6}} remote-as {{interface.peer.asn}}\n        neighbor {{interface.peer.ipv6}} activate\n  {% endif %}\n{% endfor %}\n      redistribute connected\n    exit-address-family\n\n    address-family ipv4 unicast\n        redistribute connected\n    exit-address-family\nexit",
+            "type": "router"
         }
     ],
     "router_id": "10.0.0.10",
-    "router_template": "#RR11\nrouter ospf {{router.ospf4_process}}\n network 192.168.0.0 255.255.255.0 area {{router.ospf4_area}}\nexit",
-    "template": "#### configuration de {{router.name}}\nipv6 unicast-routing\n            \n{% for interface in router.interfaces %}\n{{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n#--\n{% endfor %}\n            \n# les templates provenant des classes seront remplaces a la 2e passe de templating\n{% for classe in router.resolved_classes %}\n# classe {{classe.name}}\n{{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4)}}\n#--\n# fin classe {{classe.name}}\n!\n{% endfor %}\n            \n{% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}\n# template specifique\n{{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4)}}\n# fin de la configuration de {{router.name}}\n"
+    "router_template": "",
+    "template": "#### configuration de {{router.name}}\nipv6 unicast-routing\nno ip domain lookup\n\n{% for interface in router.interfaces %}\n{{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4)}}\n#--\n{% endfor %}\n\n# les templates provenant des classes seront remplaces a la 2e passe de templating\n{% for classe in router.resolved_classes %}\n# classe {{classe.name}}\n{{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4)}}\n#--\n# fin classe {{classe.name}}\n{% endfor %}\n\n{% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}\n\n# template specifique\n{{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4)}}\n#fin de la configuration de {{router.name}}"
 }
 ```
 
@@ -498,76 +624,147 @@ custom_config = {
 ```cisco
 #### configuration de R1
 ipv6 unicast-routing
+no ip domain lookup
 interface f5/0
-    description connectee a f4/0 de  R3
-    no shutdown
-    ipv6 enable
-    ipv6 address 2001:b399::2/64
-    ip address 172.30.128.2 255.255.255.252
-# classe mpls-interface
+  description connectee a f4/0 de  R3
+  no shutdown
+  ipv6 enable
+  ipv6 address 2001:b399::2/64
+  ip address 172.30.128.2 255.255.255.252
+  # classe mpls-interface
     mpls ip
-# fin classe mpls-interface
-# classe ospf6-cost
-    ipv6 ospf cost 5
-# fin classe ospf6-cost
-# classe ospf6-interface
+    # fin classe mpls-interface
+  # classe ospf6-interface
     ipv6 ospf 1 area 0
-# fin classe ospf6-interface
-# classe ospf4-interface
-    ip ospf 2 area 0
-# fin classe ospf4-interface
-#template specifique a cette interface
+    # fin classe ospf6-interface
+  # classe ospf4-interface
+    ip ospf 4 area 0
+    # fin classe ospf4-interface
+  # classe ospf6-cost
+    ipv6 ospf cost 5
+    # fin classe ospf6-cost
+  #template specifique a cette interface
     # oh que oui {{interface.oui}}
-  exit
+exit
 # fin interface f5/0
 #--
 interface f1/0
-    no shutdown
-    ipv6 enable
-    ipv6 address 2001:1:1:1::1/64
-    ip address 192.168.0.1 255.255.255.0
-#template specifique a cette interface
-  exit
+  no shutdown
+  ipv6 enable
+  ipv6 address 2001:1:1:1::1/64
+  ip address 192.168.0.1 255.255.255.0
+  #template specifique a cette interface
+exit
 # fin interface f1/0
 #--
 interface f3/0
-    description connectee a f0/0 de  R2
-    no shutdown
-    ipv6 enable
-    ipv6 address 2001:b6c1::1/64
-    ip address 172.30.128.13 255.255.255.252
-# classe mpls-interface
+  description connectee a f0/0 de  R2
+  no shutdown
+  ipv6 enable
+  ipv6 address 2001:b6c1::1/64
+  ip address 172.30.128.13 255.255.255.252
+  # classe mpls-interface
     mpls ip
-# fin classe mpls-interface
-# classe ospf6-interface
+    # fin classe mpls-interface
+  # classe ospf6-interface
     ipv6 ospf 1 area 0
-# fin classe ospf6-interface
-# classe ospf4-interface
-    ip ospf 2 area 0
-# fin classe ospf4-interface
-#template specifique a cette interface
-  exit
+    # fin classe ospf6-interface
+  # classe ospf4-interface
+    ip ospf 4 area 0
+    # fin classe ospf4-interface
+  #template specifique a cette interface
+exit
 # fin interface f3/0
 #--
 interface f4/0
-    description connectee a f2/0 de  R6
-    no shutdown
-    ipv6 enable
-    ipv6 address 2001:acf4::1/64
-    ip address 172.30.128.17 255.255.255.252
-# classe mpls-interface
+  description connectee a f2/0 de  R6
+  no shutdown
+  ipv6 enable
+  ipv6 address 2001:acf4::1/64
+  ip address 172.30.128.17 255.255.255.252
+  # classe mpls-interface
     mpls ip
-# fin classe mpls-interface
-# classe ospf6-interface
+    # fin classe mpls-interface
+  # classe ospf6-interface
     ipv6 ospf 1 area 0
-# fin classe ospf6-interface
-# classe ospf4-interface
-    ip ospf 2 area 0
-# fin classe ospf4-interface
-#template specifique a cette interface
-  exit
+    # fin classe ospf6-interface
+  # classe ospf4-interface
+    ip ospf 4 area 0
+    # fin classe ospf4-interface
+  #template specifique a cette interface
+exit
 # fin interface f4/0
 #--
+interface f0/0
+  description connectee a f3/0 de  R4
+  no shutdown
+  ipv6 enable
+  ipv6 address 2001:a151::1/64
+  ip address 172.30.128.21 255.255.255.252
+  # classe mpls-interface
+    mpls ip
+    # fin classe mpls-interface
+  # classe ospf6-interface
+    ipv6 ospf 1 area 0
+    # fin classe ospf6-interface
+  # classe ospf4-interface
+    ip ospf 4 area 0
+    # fin classe ospf4-interface
+  #template specifique a cette interface
+    no ipv6 ospf 1 area 1
+exit
+# fin interface f0/0
+#--
+# les templates provenant des classes seront remplaces a la 2e passe de templating
+# classe ospf4-router
+router ospf 4
+  router-id 10.0.0.10
+  redistribute connected subnets
+exit
+#--
+# fin classe ospf4-router
+# classe ospf6-router
+ipv6 router ospf 1
+  redistribute connected
+  router-id 10.0.0.10
+exit
+#--
+# fin classe ospf6-router
+# classe mpls-router
+ip cef
+ipv6 cef
+#--
+# fin classe mpls-router
+# classe bgp-router
+router bgp 101
+    bgp router-id 10.0.0.10
+    neighbor 172.30.128.1 remote-as 102
+    neighbor 172.30.128.1 activate
+    neighbor 172.30.128.14 remote-as 104
+    neighbor 172.30.128.14 activate
+    neighbor 172.30.128.18 remote-as 103
+    neighbor 172.30.128.18 activate
+    neighbor 172.30.128.22 remote-as 105
+    neighbor 172.30.128.22 activate
+    address-family ipv6 unicast
+        neighbor 2001:b399::1 remote-as 102
+        neighbor 2001:b399::1 activate
+        neighbor 2001:b6c1::2 remote-as 104
+        neighbor 2001:b6c1::2 activate
+        neighbor 2001:acf4::2 remote-as 103
+        neighbor 2001:acf4::2 activate
+        neighbor 2001:a151::2 remote-as 105
+        neighbor 2001:a151::2 activate
+      redistribute connected
+    exit-address-family
+    address-family ipv4 unicast
+        redistribute connected
+    exit-address-family
+exit
+#--
+# fin classe bgp-router
+# template specifique
+#fin de la configuration de R1
 interface f0/0
     description connectee a f3/0 de  R4
     no shutdown

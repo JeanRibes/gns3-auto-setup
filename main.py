@@ -6,9 +6,12 @@ import os
 import re
 import sys
 import time
+import traceback
 from copy import deepcopy
 from socket import *
 from typing import Set
+
+import requests
 from jinja2 import Template
 from gns3fy import gns3fy, Project, Link
 
@@ -102,7 +105,17 @@ def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
 
 def get_gns_conf():
     gs = gns3fy.Gns3Connector("http://localhost:3080", user="admin")
-    project_id = list(filter(lambda p: p['status'] == 'opened', gs.get_projects()))[0]['project_id']
+    try:
+        project_id = list(filter(lambda p: p['status'] == 'opened', gs.get_projects()))[0]['project_id']
+    except requests.exceptions.ConnectionError as e:
+        traceback.print_exc()
+        print(
+            "==============================================================================================================================",
+            file=sys.stderr)
+        print(
+            "\nImpossible de se connecter à GNS3!\nVeuillez lancer le logiciel et/ou désactiver la protection par mot de passe",
+            file=sys.stderr)
+        exit(1)
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
 
@@ -535,8 +548,9 @@ def parse_cli():
     parser = argparse.ArgumentParser(description='Configurateur automatique de routeurs dans GNS3')
     parser.add_argument('--gen-skeleton', action='store_true', help="Affiche un squelette de configuration adapté au "
                                                                     "réseau détécté, sans configurer les routeurs.")
-    parser.add_argument('--hide-labels','-n', action='store_false', help="Crée des jolis labels dans GNS3 pour afficher "
-                                                                    "les subnets, router-id et ASN")
+    parser.add_argument('--hide-labels', '-n', action='store_false',
+                        help="Crée des jolis labels dans GNS3 pour afficher "
+                             "les subnets, router-id et ASN")
     parser.add_argument('--delete-labels', action='store_true', help="Efface tous les labels crées par ce programme"
                                                                      " de GNS3 puis termine.")
     parser.add_argument('--apply', '-a', action='store_true',

@@ -25,11 +25,11 @@ class Router:
     interfaces: list
 
     @staticmethod
-    def from_node(node: Node, ri,asn):
+    def from_node(node: Node, ri, asn):
         return Router(name=node.name,
                       x=node.x, y=node.y, uid=node.node_id,
                       console_host=node.console_host, console_port=node.console,
-                      router_id=ri, interfaces=[],asn=asn)
+                      router_id=ri, interfaces=[], asn=asn)
 
 
 class Routers(dict):
@@ -141,10 +141,18 @@ class Interface:
         return f"{IPv4Address(int(self.lien.network4) + ord(self.side) - 96)}"
 
 
+# https://stackoverflow.com/questions/8640959/how-can-i-control-what-scalar-form-pyyaml-uses-for-my-data
+def str_presenter(dumper, data):
+    if len(data.splitlines()) > 1:  # check for multiline string
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+    return dumper.represent_scalar('tag:yaml.org,2002:str', data)
 
 
-def load_user_conf(filename='user_conf.yaml')->dict:
-    user_conf = yaml.load(open(filename,'r'), Loader=yaml.FullLoader)
+yaml.add_representer(str, str_presenter)
+
+
+def load_user_conf(filename='user_conf.yaml') -> dict:
+    user_conf = yaml.load(open(filename, 'r'), Loader=yaml.FullLoader)
     user_conf_schema = json.load(open('user-conf-schema.json', 'r'))
     validate(instance=user_conf, schema=user_conf_schema)
     return user_conf

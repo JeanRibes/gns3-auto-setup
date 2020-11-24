@@ -167,7 +167,8 @@
         "interface_values": {
           "$ref": "#/definitions/values"
         }
-      }
+      },
+      "required": ["name"]
     }
   }
 }
