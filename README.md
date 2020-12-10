@@ -83,7 +83,7 @@ pip install -r requirements.txt
 ```
 git clone https://github.com/JeanRibes/gns3-auto-setup.git gns3-auto-setup
 cd gns3-auto-setup
-pip3 install --user gns3fy==0.7.1 Jinja2==2.11.2
+pip3 install --user gns3fy==0.7.1 Jinja2==2.11.2 PyYAML==5.3.1 jsonschema==3.2.0
 ```
 ## Configuration de GNS3
 
