@@ -58,6 +58,7 @@ class Lien:
 
     int_a: str
     int_b: str
+    network4_display: str = "10/8"
 
     @property
     def interface_a(self):

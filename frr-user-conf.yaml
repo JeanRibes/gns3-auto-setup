@@ -1,0 +1,757 @@
+## topologie du réseau:
+#routeur gC1
+# *   0/0 -> gB2: 0/0
+# *   eth1 -> gC3: eth1
+# *   eth2 -> gC8: eth2
+#routeur gC2
+# *   eth2 -> gC3: eth2
+# *   eth1 -> gC4: eth1
+# *   eth3 -> gC8: eth3
+#routeur gC3
+# *   eth2 -> gC2: eth2
+# *   eth3 -> gC6: eth3
+# *   eth1 -> gC1: eth1
+#routeur gC4
+# *   eth1 -> gC2: eth1
+# *   eth2 -> gC5: eth2
+#routeur gC5
+# *   eth2 -> gC4: eth2
+# *   eth1 -> gC6: eth1
+# *   eth7 -> gB1: eth7
+#routeur gC6
+# *   eth1 -> gC5: eth1
+# *   eth2 -> gC7: eth2
+# *   eth3 -> gC3: eth3
+#routeur gC7
+# *   eth2 -> gC6: eth2
+# *   eth1 -> gC8: eth1
+#routeur gC8
+# *   eth1 -> gC7: eth1
+# *   eth3 -> gC2: eth3
+# *   eth2 -> gC1: eth2
+#routeur sfrB1
+# *   eth1 -> gB1: eth1
+# *   eth7 -> sfrC1: eth7
+#routeur gB1
+# *   eth1 -> sfrB1: eth1
+# *   eth7 -> gC5: eth7
+#routeur sfrC1
+# *   eth1 -> sfrC4: eth1
+# *   eth2 -> sfrC2: eth2
+# *   eth7 -> sfrB1: eth7
+#routeur sfrC2
+# *   eth1 -> sfrC3: eth1
+# *   eth2 -> sfrC1: eth2
+#routeur sfrC3
+# *   eth2 -> sfrC4: eth2
+# *   eth1 -> sfrC2: eth1
+#routeur sfrC4
+# *   eth1 -> sfrC1: eth1
+# *   eth2 -> sfrC3: eth2
+# *   eth7 -> sfrE1: eth7
+#routeur sfrE1
+# *   eth7 -> sfrC4: eth7
+# *   eth0 -> client:
+#routeur gB2
+# *   eth1 -> fB1: eth0
+# *   0/0 -> gC1: 0/0
+#routeur fB1
+# *   eth7 -> fC1: eth7
+# *   eth0 -> gB2: eth1
+#routeur fC1
+# *   eth7 -> fB1: eth7
+# *   eth1 -> fC2: eth1
+# *   eth2 -> fC3: eth2
+#routeur fC2
+# *   eth1 -> fC1: eth1
+# *   eth2 -> fC4: eth2
+# *   eth3 -> fC5: eth2
+#routeur fC3
+# *   eth2 -> fC1: eth2
+# *   eth3 -> fC5: eth3
+#routeur fC4
+# *   eth2 -> fC2: eth2
+# *   eth1 -> fE1: eth1
+#routeur fC5
+# *   eth3 -> fC3: eth3
+# *   eth2 -> fC2: eth3
+#routeur fE1
+# *   eth1 -> fC4: eth1
+# *   eth0 -> client:
+# *   eth2 -> client:
+
+---
+templates:
+  router: |-
+    ipv6 forwarding
+    router-id {{router.router_id}}
+    {% for interface in router.interfaces %}
+    {{Template(interface.template).render(Template=Template,interface=interface,router=router)}}
+    {%endfor%}
+    {% for classe in router.resolved_classes %}
+    # classe {{classe.name}}
+    {{Template(classe.template).render(Template=Template,classe=classe,router=router)}}
+    #--
+    # fin classe {{classe.name}}
+    !
+    {% endfor %}
+  interface: |-
+    int {{interface.name}}
+      ipv6 address {{interface.ipv6_network}}::{{interface.ip_end}}/64
+    {% for classe in interface.resolved_classes %}
+    # classe {{classe.name}}
+    {{Template(classe.template).render(interface=interface,router=router)}}
+    # fin classe {{classe.name}}
+    {% endfor %}
+      {{interface.interface_template}}
+    exit
+
+default_router_classes: []
+default_interface_classes: []
+classes:
+- name: ospf6-router
+  type: router
+  template: |-
+    router ospf6
+      ospf6 router-id {{router.router_id}}
+      redistribute connected
+    exit
+  values:
+    ospf6_process: 1
+    ospf6_area: 0
+- name: ospf6-interface
+  type: interface
+  template: |-
+    router ospf6
+      interface {{interface.name}} area {{router.ospf6_area}}
+    int {{interface.name}}
+- name: bgp-router
+  type: router
+  template: |-
+    debug bgp updates
+    ipv6 prefix-list hide-core seq 5 deny 2001:10::/48 ge 48
+    ipv6 prefix-list hide-core seq 10 permit any
+    !
+    router bgp {{router.Rasn}}
+      bgp router-id {{router.router_id}}
+      no bgp ebgp-requires-policy
+      address-family ipv6 unicast
+    exit
+- name: bgp-interface
+  type: interface
+  template: |-
+    router bgp {{router.Rasn}}
+      neighbor {{interface.peer.ipv6}} remote-as {{interface.peer_as}}
+      address-family ipv6 unicast
+        neighbor {{interface.peer.ipv6}} activate
+    {% if interface.peer_as != router.Rasn and router.hide_core %}
+        neighbor {{interface.peer.ipv6}}  prefix-list hide-core out
+    {% endif %}
+      exit-address-family
+    int {{interface.name}}
+  #values:
+    #peer_as: 2
+- name: core
+  type: router
+  classes: [ospf6-router]
+  interface_classes: [ospf6-interface]
+  template: ''
+- name: border
+  type: router
+  template: |-
+    router bgp {{router.Rasn}}
+      address-family ipv6 unicast
+        redistribute ospf
+    router ospf6
+      redistribute bgp
+  values:
+    hide_core: true
+
+
+- name: geant-border
+  type: router
+  classes: [bgp-router, ospf6-router, border]
+  interface_classes: []
+
+  values:
+    Rasn: 1
+- name: geant-core
+  type: router
+  classes: [core]
+
+- name: sfr
+  type: router
+  values:
+    Rasn: 2
+- name: sfr-core
+  type: router
+  classes: [core, sfr]
+- name: sfr-border
+  type: router
+  classes: [bgp-router,ospf6-router,sfr, border]
+- name: sfr-edge
+  type: router
+  classes: [ospf6-router]
+
+- name: free
+  type: router
+  values:
+    Rasn: 3
+- name: free-core
+  type: router
+  classes: [core, free]
+- name: free-border
+  type: router
+  classes: [bgp-router,ospf6-router,free,border]
+- name: free-edge
+  type: router
+  classes: [ospf6-router]
+links:
+- name: gC3<-->gC2
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC2<-->gC4
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC4<-->gC5
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC5<-->gC6
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC6<-->gC7
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC8<-->gC7
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC8<-->gC2
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC3<-->gC6
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gB1<-->sfrB1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC5<-->gB1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: sfrC1<-->sfrC4
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: sfrC4<-->sfrC3
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: sfrC3<-->sfrC2
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: sfrC2<-->sfrC1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: sfrB1<-->sfrC1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: sfrC4<-->sfrE1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fB1<-->fC1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fC1<-->fC2
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fC2<-->fC4
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fC1<-->fC3
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fC5<-->fC3
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fC5<-->fC2
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gB2<-->fB1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: fC4<-->fE1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gB2<-->gC1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC1<-->gC3
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+- name: gC8<-->gC1
+  interface_classes: []
+  router_classes: []
+  template: ''
+  interface_values: {}
+routers:
+- name: gC1
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: 0/0
+    template: ''
+    classes: []
+    values:
+      name: eth0
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+
+- name: gC2
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: gC3
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: gC4
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: gC5
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth7
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: gC6
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: gC7
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: gC8
+  disable: false
+  classes: [geant-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: sfrB1
+  disable: false
+  classes: [sfr-border]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: [bgp-interface]
+    values:
+      peer_as: 1
+  - name: eth7
+    template: ''
+    classes: [ospf6-interface]
+    values: {}
+  values: {}
+- name: gB1
+  disable: false
+  classes: [geant-border]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: [bgp-interface]
+    values:
+      peer_as: 2
+  - name: eth7
+    template: ''
+    classes: [ospf6-interface]
+    values: {}
+  values:
+    bgp_adv_nets: ['2001:1:f4ee:1::/64']
+- name: sfrC1
+  disable: false
+  classes: [sfr-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth7
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: sfrC2
+  disable: false
+  classes: [sfr-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: sfrC3
+  disable: false
+  classes: [sfr-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: sfrC4
+  disable: false
+  classes: [sfr-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth7
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+
+- name: sfrE1
+  disable: false
+  classes: [sfr-edge]
+  template: ''
+  interfaces:
+  - name: eth7
+    template: ''
+    classes: [ospf6-interface]
+    values: {}
+  - name: eth0
+    template: 'no ipv6 nd suppress-ra'
+    classes: []
+    values:
+      ipv6_network: 2001:1:2f4:1
+      ip_end: 1
+  values: {}
+- name: gB2
+  disable: false
+  classes: [geant-border]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: [bgp-interface]
+    values:
+      peer_as: 3
+  - name: 0/0
+    template: ''
+    classes: [ospf6-interface]
+    values:
+      name: eth0
+  values:
+    bgp_adv_nets: ['2001:1:2f4:1::/64']
+- name: fB1
+  disable: false
+  classes: [free-border]
+  template: ''
+  interfaces:
+  - name: eth7
+    template: ''
+    classes: [ospf6-interface]
+    values: {}
+  - name: eth0
+    template: ''
+    classes: [bgp-interface]
+    values:
+      peer_as: 1
+  values: {}
+- name: fC1
+  disable: false
+  classes: [free-core]
+  template: ''
+  interfaces:
+  - name: eth7
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: fC2
+  disable: false
+  classes: [free-core]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: fC3
+  disable: false
+  classes: [free-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: fC4
+  disable: false
+  classes: [free-core]
+  template: ''
+  interfaces:
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  - name: eth1
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: fC5
+  disable: false
+  classes: [free-core]
+  template: ''
+  interfaces:
+  - name: eth3
+    template: ''
+    classes: []
+    values: {}
+  - name: eth2
+    template: ''
+    classes: []
+    values: {}
+  values: {}
+- name: fE1
+  disable: false
+  classes: [free-edge]
+  template: ''
+  interfaces:
+  - name: eth1
+    template: ''
+    classes: [ospf6-interface]
+    values: {}
+  - name: eth0
+    template: 'no ipv6 nd suppress-ra'
+    classes: [edge-int]
+    values:
+      ipv6_network: 2001:1:f4ee:1
+      ip_end: 1
+  - name: eth2
+    template: 'no ipv6 nd suppress-ra'
+    classes: [ edge-int ]
+    values:
+      ipv6_network: 2001:1:f4ee:2
+      ip_end: 1
+  values: {}
+- name: gB3
+  disable: false
+  classes: [ geant-border]
+  template: ''
+  interfaces:
+    - name: eth0
+      template: ''
+      classes: [bgp-interface ]
+      values:
+        peer_as: 2
+    - name: eth3
+      template: ''
+      classes: [ ospf6-interface]
+      values: { }
+  values: { }
+- name: sB2
+  disable: false
+  classes: [ sfr-border]
+  template: ''
+  interfaces:
+    - name: eth0
+      template: ''
+      classes: [bgp-interface ] #
+      values:
+        peer_as: 1
+    - name: eth3
+      template: ''
+      classes: [ ospf6-interface]
+      values: { }
+  values: { }

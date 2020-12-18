@@ -57,7 +57,9 @@
     "values": {
       "type": "object",
       "additionalProperties": true,
-      "title": "Valeurs utilisateur"
+      "title": "Valeurs utilisateur",
+      "properties": {
+      }
     },
     "classe": {
       "title": "Définition d'une classe",

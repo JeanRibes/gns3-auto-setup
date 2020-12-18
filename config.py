@@ -1,5 +1,17 @@
 # tapez "menu m" dans le shell IOS
 main_menu = """
+menu tp command 1 sh ip cef
+menu tp command 2 sh mpls ldp neighbor
+menu tp command 3 sh mpls forwarding-table
+menu tp command 4 sh mpls ip binding 
+menu tp command e menu-exit
+menu tp prompt $ ====menu TP=====
+1. voir la FIB
+2. voisins LDP
+3. voir la LFIB
+4. voir la LIB 
+    e. quitter
+choix : $
 menu ospf command 1 show ipv6 ospf interface brief
 menu ospf command 2 show ipv6 ospf neighbor
 menu ospf command 3 sh ipv6 route ospf | include OE2

@@ -47,7 +47,7 @@ def enumerate_routers(gs, project_id):
     for node in gs.get_nodes(project_id):
         obj = Node(project_id=project_id, node_id=node['node_id'], connector=gs)
         obj.get()
-        if obj.node_type == 'dynamips' or obj.name.startswith('R'):
+        if obj.node_type == 'dynamips' or obj.symbol == ':/symbols/classic/router.svg':
             routers.add(Router.from_node(obj, str(IPv4Address(router_i)), asn=asn))
             router_i += 1
             asn += 1
@@ -76,7 +76,7 @@ def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
 
         lien = Lien(
             uid=link.link_id,
-            network6='2001:' + link.link_id.split('-')[3],
+            network6='2001:10:0:' + link.link_id.split('-')[3],
             network4=IPv4Address(in4),
             side_a=router_side_a, side_b=router_side_b,
             int_a=link.nodes[0]['label']['text'],
@@ -228,6 +228,8 @@ def apply_classes_values(classes: List[dict], obj: dict):
     # rajoute les variables définies dans les classes
     for classe in classes:
         obj.update(safe_get_value(classe, {}, 'values'))
+        if not classe.get('template'):
+            classe['template']=''
 
 
 def add_templates(classes: List[dict]) -> str:
@@ -289,7 +291,6 @@ def resolve_router_config(router: Router) -> dict:
         int_conf['resolved_classes'] = if_classes
         int_conf['template'] = safe_get_value(user_config, '', 'templates', 'interface')
         int_conf['interface_template'] = safe_get_value(user_def_interface, '', 'template')
-
         if interface.peer is not None:
             lien_custom = resolve_link_config(router.name, interface.peer.name)
             int_conf['peer'] = {
@@ -312,7 +313,7 @@ def resolve_router_config(router: Router) -> dict:
 
             if lien_custom.get('interface_values'):
                 int_conf.update(lien_custom['interface_values'])
-
+                interface.lien.network4_display = int_conf['ipv4_network']
             # re-mapping
         conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
     conf['router_template'] = safe_get_value(cc, '', 'template')
@@ -328,6 +329,7 @@ def resolve_router_config(router: Router) -> dict:
 
 
 def generate_conf(conf: dict) -> str:
+    #print(f"génération de la conf de {conf['name']}")
     conf_txt = open(f"output/conf_{conf['name']}.cfg", 'w+')
     conf_json = open(f"output/conf_{conf['name']}.json", 'w+')
 
@@ -356,9 +358,9 @@ class Console:
         self.sock = socket()
         try:
             self.sock.connect((console_host, console_port))
-        except ConnectionRefusedError:
+        except ConnectionRefusedError as e:
             print("Vous devez lancer le projet GNS3 pour configurer les routeurs")
-            exit(0)
+            raise e
 
     def write_conf(self, text: str):
         # on remplace \n par \r car la console Cisco attend \r comme saut de ligne
@@ -424,7 +426,6 @@ def configure_router(router: Router, conf: str, console: Console):
         time.sleep(0.5)
         print('.', end='')
         sys.stdout.flush()
-    time.sleep(1)
     print(f"{router.name} configuré !")
 
 
@@ -444,7 +445,7 @@ def delete_drawings(project: Project):
 def display_tracked_subnets(project: Project, liens: List[Lien]):
     # affiche les subnets entre routeurs
     for lien in liens:
-        text = f"{lien.network4}/30\n{lien.network6}::"
+        text = f"{lien.network4_display}"
         x = (lien.side_a.x + lien.side_b.x) // 2 - 25
         y = (lien.side_a.y + lien.side_b.y) // 2
         try:
@@ -464,12 +465,15 @@ def display_router_ids(project: Project, routers: Routers):
     for node in routers.values():
         x = node.x
         y = node.y + 10
-        project.create_drawing(
-            svg=f'<svg width="60" height="15">{MAGIC_SVG}<rect width="60" height="15" fill="#ffffff" fill-opacity="1.0"/></svg>',
-            x=x, y=y, locked=True)
-        project.create_drawing(
-            svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}\n   {node.asn}</text></svg>',
-            x=x, y=y - 4, locked=True)
+        try:
+            project.create_drawing(
+                svg=f'<svg width="60" height="15">{MAGIC_SVG}<rect width="60" height="15" fill="#ffffff" fill-opacity="1.0"/></svg>',
+                x=x, y=y, locked=True)
+            project.create_drawing(
+                svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}\n   {node.asn}</text></svg>',
+                x=x, y=y - 4, locked=True)
+        except AttributeError: # des fois GNS3 est pas content
+            pass
 
 
 def display_costs(project: Project, routers: Routers):
@@ -543,11 +547,22 @@ def generate_skeleton(routers: List[Router], liens: List[Lien]) -> dict:
         })
     return main
 
+def gen_hosts_file(all_confs:dict):
+    hosts_f=""
+    for conf in all_confs:
+        for interface in conf['interfaces']:
+            try:
+                hosts_f += f"{construct_ipv4(interface['ipv4_network'],interface['ip_end'])}   {conf['name']}\n"
+                #hosts_f += f"{interface['ipv6_network']}::{interface['ip_end']}    {conf['name']}\n"
+            except KeyError:
+                pass
+    return hosts_f
 
 def parse_cli():
     parser = argparse.ArgumentParser(description='Configurateur automatique de routeurs dans GNS3')
-    parser.add_argument('--gen-skeleton', action='store_true', help="Affiche un squelette de configuration adapté au "
-                                                                    "réseau détécté, sans configurer les routeurs.")
+    parser.add_argument('--gen-skeleton', '-k', action='store_true',
+                        help="Affiche un squelette de configuration adapté au "
+                             "réseau détécté, sans configurer les routeurs.")
     parser.add_argument('--hide-labels', '-n', action='store_false',
                         help="Crée des jolis labels dans GNS3 pour afficher "
                              "les subnets, router-id et ASN")
@@ -555,14 +570,17 @@ def parse_cli():
                                                                      " de GNS3 puis termine.")
     parser.add_argument('--apply', '-a', action='store_true',
                         help="Active l'envoi automatique des configurations aux routeurs")
-    parser.add_argument('--show-topology', action='store_true', help="Montre la topologie détéctée par ce script.")
+    parser.add_argument('--show-topology', '-s', action='store_true',
+                        help="Montre la topologie détéctée par ce script.")
     parser.add_argument('--global-cmd', '-g', type=str, nargs='+', default=[], metavar='commande',
                         help='Une commande qui sera exécutée sur tous les routeurs en même temps. Pas besoin d\'utiliser de guillemets')
     parser.add_argument('--export-user-conf', '-e', action='store_true',
                         help="Exporte la configuration utilisateur au format JSON et termine")
-    parser.add_argument('--import-user-conf', '-i', type=str, nargs=1, default='user-conf.yaml',
+    parser.add_argument('--import-user-conf', '-i', type=str, nargs=1, default=['user-conf.yaml'],
                         metavar='user-conf.yaml',
                         help="Utilise la configuration utilisateur depuis un fichier YAML")
+    parser.add_argument('--gen-hosts','-o', action='store_true',
+                        help="Affiche les lignes à rajouter au fichier /etc/hosts")
     # parser.add_argument('--gns-project-id','-p',type=str,nargs=1,default='AUTO',metavar='gns3_project_name',
     #                    help="ID du projet GNS3 à utiliser. Par défaut, utilise celui qui est ouvert") #flemme
     vals = parser.parse_args()
@@ -598,7 +616,7 @@ if __name__ == '__main__':
         print(yaml.dump(data=generate_skeleton(list(routers.values()), liens), indent=2, sort_keys=False))
         exit(0)
 
-    user_config = load_user_conf(vals.import_user_conf)
+    user_config = load_user_conf(vals.import_user_conf[0])
 
     if vals.export_user_conf:
         print(json.dumps(user_config, indent=2, sort_keys=False))
@@ -608,23 +626,35 @@ if __name__ == '__main__':
     if len(vals.global_cmd) > 0:
         cmd = " ".join(vals.global_cmd)
         print(f"Exécution de la commande `{cmd}` sur tous les routeurs")
+        _c = cmd.encode('ascii', 'ignore')
+        print(f"exec {_c}")
         for router in routers.values():
+            print(f"Routeur {router.name}")
             console = Console.from_router(router)
             console.write_cmd(b'\r')
-            console.write_cmd(cmd.encode('ascii', 'ignore'))
+            console.write_cmd(_c+b'\r\n')
+            time.sleep(0.1)
         exit(0)
 
     # partie de génération des confs
+    all_confs = []
     for router in routers.values():
-        conf = generate_conf(resolve_router_config(router))
-        console = Console.from_router(router)
-        if vals.apply:
-            configure_router(router, conf, console)
+        jc = resolve_router_config(router)
+        text_conf = generate_conf(jc)
+        all_confs.append(jc)
+        try:
+            console = Console.from_router(router)
+            if vals.apply:
+                configure_router(router, text_conf, console)
+        except ConnectionRefusedError:
+            pass
+    if vals.gen_hosts:
+        print(gen_hosts_file(all_confs))
+        exit(0)
     print("Les fichiers configurations pour les routeurs ont été écrits dans le dossier `./output`")
     if not vals.apply:
         print("Si vous désirez envoyer automatiquement les configurations aux routeur, relancez"
               " ce programme avec --apply")
-
     # partie de génération des jolis dessins
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
