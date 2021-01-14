@@ -55,6 +55,16 @@ def enumerate_routers(gs, project_id):
     return routers
 
 
+def enumerate_vpcs(gs, project_id) -> List[Node]:
+    vpcs = []
+    for node in gs.get_nodes(project_id):
+        obj = Node(project_id=project_id, node_id=node['node_id'], connector=gs)
+        obj.get()
+        if obj.symbol == ':/symbols/classic/computer.svg' or obj.node_type == 'vpcs':
+            vpcs.append(obj)
+    return vpcs
+
+
 def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
     in4 = 2887680000
     liens = []
@@ -106,7 +116,7 @@ def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
 
 def get_gns_conf(url, password):
     if password is not None:
-        gs = gns3fy.Gns3Connector(url, user="admin",cred=password)
+        gs = gns3fy.Gns3Connector(url, user="admin", cred=password)
     else:
         gs = gns3fy.Gns3Connector(url, user="admin")
     try:
@@ -121,7 +131,7 @@ def get_gns_conf(url, password):
             file=sys.stderr)
         exit(1)
     except IndexError:
-        print("Erreur: Vous devez ouvrir exactement un projet GNS3",file=sys.stderr)
+        print("Erreur: Vous devez ouvrir exactement un projet GNS3", file=sys.stderr)
         exit(1)
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
@@ -236,7 +246,7 @@ def apply_classes_values(classes: List[dict], obj: dict):
     for classe in classes:
         obj.update(safe_get_value(classe, {}, 'values'))
         if not classe.get('template'):
-            classe['template']=''
+            classe['template'] = ''
 
 
 def add_templates(classes: List[dict]) -> str:
@@ -323,6 +333,16 @@ def resolve_router_config(router: Router) -> dict:
                 interface.lien.network4_display = int_conf['ipv4_network']
             # re-mapping
         conf['template'] = '\n' + safe_get_value(cc, '', 'template') + add_templates(classes)
+    for inter in conf['interfaces']:  # pour les interfaces client
+        if inter['lien'] == 'edge':
+            resc = resolve_classes(
+                safe_get_value(
+                    find(cc['interfaces'], 'name', inter['name'])
+                    , [], 'classes')
+                + user_config['default_interface_classes'],
+                'interface')
+            apply_classes_values(resc, inter)
+            inter['resolved_classes'] = resc
     conf['router_template'] = safe_get_value(cc, '', 'template')
     conf['template'] = template
 
@@ -336,7 +356,7 @@ def resolve_router_config(router: Router) -> dict:
 
 
 def generate_conf(conf: dict) -> str:
-    #print(f"génération de la conf de {conf['name']}")
+    # print(f"génération de la conf de {conf['name']}")
     conf_txt = open(f"output/conf_{conf['name']}.cfg", 'w+')
     conf_json = open(f"output/conf_{conf['name']}.json", 'w+')
 
@@ -365,7 +385,7 @@ class Console:
         self.name = name
         self.sock = socket()
         try:
-            print(console_host,console_port)
+            print(console_host, console_port)
             self.sock.connect((console_host, console_port))
         except ConnectionRefusedError as e:
             print("Vous devez lancer le projet GNS3 pour configurer les routeurs")
@@ -421,8 +441,8 @@ class Console:
 def configure_router(router: Router, conf: str, console: Console):
     print(f'configuration de  {router.name}')
     for partie in conf.split('#--'):
-        console.write_conf(partie)
-        time.sleep(0.5)
+        console.write_conf("".join(filter(lambda s:not s.startswith('#'),partie.splitlines(keepends=True))))
+        time.sleep(int(os.getenv('WAIT','0.5')))
         print('.', end='')
         sys.stdout.flush()
     print(f"{router.name} configuré !")
@@ -471,7 +491,7 @@ def display_router_ids(project: Project, routers: Routers):
             project.create_drawing(
                 svg=f'<svg width="100" height="15">{MAGIC_SVG}<text>{node.router_id}\n   {node.asn}</text></svg>',
                 x=x, y=y - 4, locked=True)
-        except AttributeError: # des fois GNS3 est pas content
+        except AttributeError:  # des fois GNS3 est pas content
             pass
 
 
@@ -546,16 +566,18 @@ def generate_skeleton(routers: List[Router], liens: List[Lien]) -> dict:
         })
     return main
 
-def gen_hosts_file(all_confs:dict):
-    hosts_f=""
+
+def gen_hosts_file(all_confs: dict):
+    hosts_f = ""
     for conf in all_confs:
         for interface in conf['interfaces']:
             try:
-                hosts_f += f"{construct_ipv4(interface['ipv4_network'],interface['ip_end'])}   {conf['name']}\n"
-                #hosts_f += f"{interface['ipv6_network']}::{interface['ip_end']}    {conf['name']}\n"
+                hosts_f += f"{construct_ipv4(interface['ipv4_network'], interface['ip_end'])}   {conf['name']}\n"
+                # hosts_f += f"{interface['ipv6_network']}::{interface['ip_end']}    {conf['name']}\n"
             except KeyError:
                 pass
     return hosts_f
+
 
 def parse_cli():
     parser = argparse.ArgumentParser(description='Configurateur automatique de routeurs dans GNS3')
@@ -578,12 +600,12 @@ def parse_cli():
     parser.add_argument('--import-user-conf', '-i', type=str, nargs=1, default=['user-conf.yaml'],
                         metavar='user-conf.yaml',
                         help="Utilise la configuration utilisateur depuis un fichier YAML")
-    parser.add_argument('--gen-hosts','-o', action='store_true',
+    parser.add_argument('--gen-hosts', '-o', action='store_true',
                         help="Affiche les lignes à rajouter au fichier /etc/hosts")
-    #parser.add_argument('--gns-project-id',type=str,nargs=1,default='AUTO',metavar='gns3_project_name',
+    # parser.add_argument('--gns-project-id',type=str,nargs=1,default='AUTO',metavar='gns3_project_name',
     #                    help="ID du projet GNS3 à utiliser. Par défaut, utilise celui qui est ouvert") #flemme
-    parser.add_argument('--gns3-url','-u',type=str,nargs=1,default=['http://localhost:3080'])
-    parser.add_argument('--gns3-password','-p',type=str,nargs=1,default=[None])
+    parser.add_argument('--gns3-url', '-u', type=str, nargs=1, default=['http://localhost:3080'])
+    parser.add_argument('--gns3-password', '-p', type=str, nargs=1, default=[None])
     vals = parser.parse_args()
     return vals
 
@@ -601,6 +623,14 @@ def init_files():
     except FileExistsError:
         pass
 
+def configure_vpcs(gs,pi,host):
+    vpcs = enumerate_vpcs(gs,pi)
+    for vpc in vpcs:
+        print(f"Configuring VPC {vpc.name}")
+        c = Console(console_host=host,console_port=vpc.console)
+        c.write_cmd(b'ip dhcp')
+        time.sleep(0.1)
+        c.sock.close()
 
 if __name__ == '__main__':
     init_files()
@@ -608,7 +638,7 @@ if __name__ == '__main__':
     gns3host = urlparse(vals.gns3_url[0]).hostname
 
     # récupère la topologie GNS3, les routeurs etc...
-    routers, gs, project_id, liens = get_gns_conf(vals.gns3_url[0],vals.gns3_password[0])
+    routers, gs, project_id, liens = get_gns_conf(vals.gns3_url[0], vals.gns3_password[0])
 
     if vals.show_topology:
         show_topology(routers)
@@ -634,7 +664,7 @@ if __name__ == '__main__':
             print(f"Routeur {router.name}")
             console = Console.from_router(router)
             console.write_cmd(b'\r')
-            console.write_cmd(_c+b'\r\n')
+            console.write_cmd(_c + b'\r\n')
             time.sleep(0.1)
         exit(0)
 
@@ -646,7 +676,7 @@ if __name__ == '__main__':
         all_confs.append(jc)
         if vals.apply:
             try:
-                console = Console(console_host=gns3host,console_port=router.console_port)
+                console = Console(console_host=gns3host, console_port=router.console_port)
                 configure_router(router, text_conf, console)
             except ConnectionRefusedError as e:
                 raise e
@@ -657,6 +687,8 @@ if __name__ == '__main__':
     if not vals.apply:
         print("Si vous désirez envoyer automatiquement les configurations aux routeur, relancez"
               " ce programme avec --apply")
+    else:
+        configure_vpcs(gs, project_id, gns3host)
     # partie de génération des jolis dessins
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()

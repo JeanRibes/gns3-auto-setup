@@ -7,8 +7,7 @@ Il s'adapte à n'importe quelle topologie réseau, et vous êtes libre de choisi
 Il est possible de personaliser la configuration avec le système de templates et valeurs.
 Vous pouvez remplacer tout ce qui est généré par l'autoconfiguration et changer les templates.
 
-Le script génère des configurations Cisco et peut les applique tout seul aux routeurs via la 
-console telnet GNS3
+Le script génère des configurations Cisco et peut les applique tout seul aux routeurs via la console telnet GNS3
 ![Diagramme GNS3](screenshot.jpg "Diagramme GNS3")
 
 # Table des matières
@@ -149,6 +148,11 @@ et de les redémarrer quand vous rajoutez/enlevez des routeurs.
 
 Sinon il est aussi possible de rajouter une 'anti-configuration' qui désactive tout juste avant la nouvelle configuration. 
 
+
+
+Si les configurations sont bonnes mais que le routeur se plaint, peut-être que les configuration sont envoyées trop vite. En général on voit les lignes de configuration à moitié terminées.
+Il suffit de changer l'intervalle de garde, en utilisant la variable d'environnement `WAIT=2`.
+
 ## Limitations
 * Les templates par défaut ne font rien des clés `'disable'`, mais vous pouvez en choisir le fonctionnement
   avec ``{% if router.disable %}...{% endif %}``.
@@ -183,13 +187,13 @@ Si c'est trop agaçant vous pouvez utiliser le programme avec ``--hide-labels`` 
  * [x] pouvoir tagger les routeurs & interfaces en groupes (en fait il suffit de faire une super-classe)
  * [x] faire en sorte que l'utilisateur fournisse les templates (jinja2 ? pug ?)
  * [x] pouvoir assigner des coûts aux liens pour du Traffic engineering (et les afficher avec des dessins GNS3)
- * [ ] configurer les conteneurs Docker
+ * [x] configurer les conteneurs Docker
  * [ ] avoir un GUI ? (mdr)
  * [x] option pour générer juste un squelette des configs ?
  * [x] générer des adresses IPv4 qui font des réseaux en /30 pour être + économe
  * [x] séparer le réseau et l'adresse dans le JSON pour pouvoir configurer facilement BGP
 avoir comme clés ip_network, ip_end, ip_mask et ip_prefixlen, toutes configurables & en ipv4 et v6
-* [ ] avoir un template par défaut pour les ``edge devices`` et les rajouter dans la représentation interne
+* [x] avoir un template par défaut pour les ``edge devices`` et les rajouter dans la représentation interne
 * [x] avoir des templates par défaut pour FRRrouting & Quagga
 
 ### Pistes pour une interfaces graphique
