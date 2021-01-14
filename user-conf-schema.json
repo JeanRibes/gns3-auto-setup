@@ -4,6 +4,10 @@
   "title": "Configuration utilisateur",
   "type": "object",
   "properties": {
+    "globals": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "templates": {
       "type": "object",
       "properties": {

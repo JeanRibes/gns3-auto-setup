@@ -10,6 +10,7 @@ import traceback
 from copy import deepcopy
 from socket import *
 from typing import Set
+from urllib.parse import urlparse
 
 import requests
 from jinja2 import Template
@@ -103,8 +104,11 @@ def enumerate_links(gs, project_id, routers: Routers) -> List[Lien]:
     return liens
 
 
-def get_gns_conf():
-    gs = gns3fy.Gns3Connector("http://localhost:3080", user="admin")
+def get_gns_conf(url, password):
+    if password is not None:
+        gs = gns3fy.Gns3Connector(url, user="admin",cred=password)
+    else:
+        gs = gns3fy.Gns3Connector(url, user="admin")
     try:
         project_id = list(filter(lambda p: p['status'] == 'opened', gs.get_projects()))[0]['project_id']
     except requests.exceptions.ConnectionError as e:
@@ -113,8 +117,11 @@ def get_gns_conf():
             "==============================================================================================================================",
             file=sys.stderr)
         print(
-            "\nImpossible de se connecter à GNS3!\nVeuillez lancer le logiciel et/ou désactiver la protection par mot de passe",
+            "\nErreur: Impossible de se connecter à GNS3!\nVeuillez lancer le logiciel et/ou désactiver la protection par mot de passe",
             file=sys.stderr)
+        exit(1)
+    except IndexError:
+        print("Erreur: Vous devez ouvrir exactement un projet GNS3",file=sys.stderr)
         exit(1)
     project = gns3fy.Project(project_id=project_id, connector=gs)
     project.get()
@@ -336,6 +343,7 @@ def generate_conf(conf: dict) -> str:
     rendered = Template(conf['template']).render(
         Template=Template,
         router=conf,
+        globals=safe_get_value(user_config, {}, 'globals'),
         construct_ipv4=construct_ipv4  # fontion qui permet de créer l'adresse IPv4 avec l'adresse réseau
     )
 
@@ -357,6 +365,7 @@ class Console:
         self.name = name
         self.sock = socket()
         try:
+            print(console_host,console_port)
             self.sock.connect((console_host, console_port))
         except ConnectionRefusedError as e:
             print("Vous devez lancer le projet GNS3 pour configurer les routeurs")
@@ -406,17 +415,7 @@ class Console:
 
     @staticmethod
     def from_router(router: Router):
-        return Console(console_host=router.console_host, console_port=router.console_port)
-
-
-def script():
-    # exemple d'utilisation de la console interactive en python
-    c = Console('127.0.0.1', 5000, 'R1')
-    c.reset_read()
-    print(c.exec_cmd('show ipv6 ro'))
-    print('============')
-    print(c.exec_cmd('sh run'))
-    exit(0)
+        return Console(console_host='127.0.0.1', console_port=router.console_port)
 
 
 def configure_router(router: Router, conf: str, console: Console):
@@ -581,8 +580,10 @@ def parse_cli():
                         help="Utilise la configuration utilisateur depuis un fichier YAML")
     parser.add_argument('--gen-hosts','-o', action='store_true',
                         help="Affiche les lignes à rajouter au fichier /etc/hosts")
-    # parser.add_argument('--gns-project-id','-p',type=str,nargs=1,default='AUTO',metavar='gns3_project_name',
+    #parser.add_argument('--gns-project-id',type=str,nargs=1,default='AUTO',metavar='gns3_project_name',
     #                    help="ID du projet GNS3 à utiliser. Par défaut, utilise celui qui est ouvert") #flemme
+    parser.add_argument('--gns3-url','-u',type=str,nargs=1,default=['http://localhost:3080'])
+    parser.add_argument('--gns3-password','-p',type=str,nargs=1,default=[None])
     vals = parser.parse_args()
     return vals
 
@@ -604,9 +605,10 @@ def init_files():
 if __name__ == '__main__':
     init_files()
     vals = parse_cli()
+    gns3host = urlparse(vals.gns3_url[0]).hostname
 
     # récupère la topologie GNS3, les routeurs etc...
-    routers, gs, project_id, liens = get_gns_conf()
+    routers, gs, project_id, liens = get_gns_conf(vals.gns3_url[0],vals.gns3_password[0])
 
     if vals.show_topology:
         show_topology(routers)
@@ -642,12 +644,12 @@ if __name__ == '__main__':
         jc = resolve_router_config(router)
         text_conf = generate_conf(jc)
         all_confs.append(jc)
-        try:
-            console = Console.from_router(router)
-            if vals.apply:
+        if vals.apply:
+            try:
+                console = Console(console_host=gns3host,console_port=router.console_port)
                 configure_router(router, text_conf, console)
-        except ConnectionRefusedError:
-            pass
+            except ConnectionRefusedError as e:
+                raise e
     if vals.gen_hosts:
         print(gen_hosts_file(all_confs))
         exit(0)
