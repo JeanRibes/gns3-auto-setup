@@ -9,6 +9,7 @@ import time
 import traceback
 from copy import deepcopy
 from socket import *
+from threading import Thread
 from typing import Set
 from urllib.parse import urlparse
 
@@ -440,12 +441,16 @@ class Console:
 
 def configure_router(router: Router, conf: str, console: Console):
     print(f'configuration de  {router.name}')
+    console.write_cmd(b'')
+    console.write_cmd(b'configure terminal')
     for partie in conf.split('#--'):
-        console.write_conf("".join(filter(lambda s:not s.startswith('#'),partie.splitlines(keepends=True))))
-        time.sleep(int(os.getenv('WAIT','0.5')))
+        console.write_cmd(partie.replace('\n', '\r').encode('ascii'))
+        #console.write_conf("".join(filter(lambda s:not s.startswith('#'),partie.splitlines(keepends=True))))
+        time.sleep(float(os.getenv('WAIT','0.5')))
         print('.', end='')
         sys.stdout.flush()
     print(f"{router.name} configuré !")
+    console.write_cmd(b'end')
 
 
 def delete_drawings(project: Project):
@@ -678,6 +683,8 @@ if __name__ == '__main__':
             try:
                 console = Console(console_host=gns3host, console_port=router.console_port)
                 configure_router(router, text_conf, console)
+                #Thread(target=configure_router,args=(router, text_conf, console)).start()
+                #time.sleep(1)
             except ConnectionRefusedError as e:
                 raise e
     if vals.gen_hosts:
