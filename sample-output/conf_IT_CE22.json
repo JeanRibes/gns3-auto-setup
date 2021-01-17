@@ -1,0 +1,90 @@
+{
+    "asn": 107,
+    "disable": false,
+    "interface_classes": [],
+    "interfaces": [
+        {
+            "disable": false,
+            "interface_template": "",
+            "ip_end": 2,
+            "ipv4_netmask": "255.255.255.252",
+            "ipv4_network": "194.20.22.0",
+            "ipv4_prefixlen": 30,
+            "ipv6_network": "2001:10:0:bed4",
+            "ipv6_prefixlen": 64,
+            "lien": "PE2-2<-->IT_CE22",
+            "name": "f4/0",
+            "peer": {
+                "asn": 103,
+                "interface": "f4/0",
+                "ipv4": "172.30.128.21",
+                "ipv6": "2001:10:0:bed4::1",
+                "name": "PE2-2"
+            },
+            "resolved_classes": [
+                {
+                    "name": "ospf4-interface",
+                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}",
+                    "type": "interface"
+                },
+                {
+                    "name": "routing-interface",
+                    "template": "",
+                    "type": "interface"
+                }
+            ],
+            "template": "interface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n  {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n  # fin classe {{classe.name}}\n  {% endfor %}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
+            "uid": "a8f6813c-8ed2-44da-bed4-dd176d6df4ce",
+            "vrf": "IT"
+        },
+        {
+            "disable": false,
+            "interface_template": "",
+            "ip_end": "1",
+            "ipv4_netmask": "255.255.255.0",
+            "ipv4_network": "20.22.0.0",
+            "ipv6_network": "configurez manuellement",
+            "lien": "edge",
+            "name": "f0/0",
+            "resolved_classes": [
+                {
+                    "name": "dhcp-server",
+                    "template": "ip dhcp pool {{interface.name}}\n network {{interface.ipv4_network}} {{interface.ipv4_netmask}}\n default-router {{construct_ipv4(interface.ipv4_network,interface.ip_end)}}\nexit\nint {{interface.name}}",
+                    "type": "interface"
+                },
+                {
+                    "name": "ce-ext",
+                    "template": "",
+                    "type": "interface",
+                    "values": {
+                        "ipv4_netmask": "255.255.255.0"
+                    }
+                }
+            ],
+            "template": "interface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n  {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n  # fin classe {{classe.name}}\n  {% endfor %}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}"
+        }
+    ],
+    "name": "IT_CE22",
+    "ospf4_area": 0,
+    "ospf4_process": 1,
+    "resolved_classes": [
+        {
+            "name": "customer-edge",
+            "template": "",
+            "type": "router",
+            "values": {
+                "ospf4_area": 0,
+                "ospf4_process": 1
+            }
+        },
+        {
+            "name": "ospf-ce-router",
+            "template": "router ospf 1\n  router-id {{router.router_id}}\n  redistribute connected subnets\nexit",
+            "type": "router",
+            "values": {}
+        }
+    ],
+    "router_id": "0.0.0.7",
+    "router_template": "",
+    "template": "#### configuration de {{router.name}}\nhostname {{router.name}}\nno ip domain lookup\nip arp proxy disable\n\n\n{% for vrf in router.vrfs %}\nip vrf {{vrf.name}}\n  rd {{globals.asn}}:{{vrf.rd}}\n  {% for rt in vrf.imports %}\n  route-target import {{globals.asn}}:{{rt}}\n  {% endfor %}\n  {% for rt in vrf.exports %}\n  route-target export {{globals.asn}}:{{rt}}\n  {% endfor %}\n{% endfor %}\n\n{% for classe in router.resolved_classes %}\n# classe {{classe.name}}\n{{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n# fin classe {{classe.name}}\n#--\n{% endfor %}\n\n{% for interface in router.interfaces %}\n{{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n#--\n{% endfor %}\n\n\n\n{% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}\n# template specifique\n{{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n#fin de la configuration de {{router.name}}\n#--\nmenu tp command 1 show ip cef\nmenu tp command 2 show mpls ldp neighbor\nmenu tp command 3 show mpls forwarding-table\nmenu tp command 4 show mpls ip binding\nmenu tp command e menu-exit\nmenu tp command q menu-exit\n#--\nmenu tp prompt $ ====menu TP=====\n1. voir la FIB   show ip cef\n2. voisins LDP   show mpls ldp neighbor\n3. voir la LFIB  show mpls forwarding-table\n4. voir la LIB   show mpls ip binding\n    (q|e). quitter\nchoix : $"
+}

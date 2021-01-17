@@ -1,0 +1,267 @@
+{
+    "asn": 103,
+    "disable": false,
+    "interface_classes": [],
+    "interfaces": [
+        {
+            "disable": false,
+            "interface_template": "",
+            "ip_end": 2,
+            "ipv4_netmask": "255.255.255.252",
+            "ipv4_network": "172.26.22.0",
+            "ipv4_prefixlen": 30,
+            "ipv6_network": "2001:10:0:8ef0",
+            "ipv6_prefixlen": 64,
+            "lien": "P2<-->PE2-2",
+            "name": "f2/0",
+            "peer": {
+                "asn": 101,
+                "interface": "f2/0",
+                "ipv4": "172.30.128.13",
+                "ipv6": "2001:10:0:8ef0::1",
+                "name": "P2"
+            },
+            "resolved_classes": [
+                {
+                    "name": "backbone-interface",
+                    "template": "",
+                    "type": "interface"
+                },
+                {
+                    "name": "mpls-interface",
+                    "template": "mpls ip\nmpls mtu override 1560",
+                    "type": "interface"
+                },
+                {
+                    "name": "ospf4-interface",
+                    "template": "ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}",
+                    "type": "interface"
+                }
+            ],
+            "template": "interface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n  {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n  # fin classe {{classe.name}}\n  {% endfor %}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
+            "uid": "48abc14d-8e50-4a88-8ef0-c502cc158a6a"
+        },
+        {
+            "disable": false,
+            "interface_template": "",
+            "ip_end": 1,
+            "ipv4_netmask": "255.255.255.252",
+            "ipv4_network": "194.10.22.0",
+            "ipv4_prefixlen": 30,
+            "ipv6_network": "2001:10:0:94f7",
+            "ipv6_prefixlen": 64,
+            "lien": "PE2-2<-->TC_CE22",
+            "name": "f3/0",
+            "peer": {
+                "asn": 106,
+                "interface": "f3/0",
+                "ipv4": "172.30.128.18",
+                "ipv6": "2001:10:0:94f7::2",
+                "name": "TC_CE22"
+            },
+            "resolved_classes": [
+                {
+                    "name": "vrf-interface",
+                    "template": "ip vrf forwarding {{interface.vrf}}",
+                    "type": "interface"
+                },
+                {
+                    "name": "edge-interface",
+                    "template": "",
+                    "type": "interface"
+                },
+                {
+                    "name": "ospf-vrf-int",
+                    "template": "{% for vrf in router.vrfs %}{% if vrf.name==interface.vrf %}\nrouter ospf {{vrf.ospf_process}} vrf {{vrf.name}}\n  router-id {{construct_ipv4(interface.ipv4_network,interface.ip_end)}}\n  redistribute bgp {{globals.asn}} subnets\n  redistribute vrf TC bgp 25253 subnets\n  network {{interface.ipv4_network}} 0.0.0.255 area 0\n  #ip ospf {{vrf.ospf_process}} area 0\nexit\ninterface {{interface.name}}\n{% endif %}{% endfor %}",
+                    "type": "interface",
+                    "values": {}
+                }
+            ],
+            "template": "interface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n  {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n  # fin classe {{classe.name}}\n  {% endfor %}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
+            "uid": "af887a95-9ef1-44a1-94f7-b9d9d27d57fd",
+            "vrf": "TC"
+        },
+        {
+            "disable": false,
+            "interface_template": "",
+            "ip_end": 1,
+            "ipv4_netmask": "255.255.255.252",
+            "ipv4_network": "194.20.22.0",
+            "ipv4_prefixlen": 30,
+            "ipv6_network": "2001:10:0:bed4",
+            "ipv6_prefixlen": 64,
+            "lien": "PE2-2<-->IT_CE22",
+            "name": "f4/0",
+            "peer": {
+                "asn": 107,
+                "interface": "f4/0",
+                "ipv4": "172.30.128.22",
+                "ipv6": "2001:10:0:bed4::2",
+                "name": "IT_CE22"
+            },
+            "resolved_classes": [
+                {
+                    "name": "vrf-interface",
+                    "template": "ip vrf forwarding {{interface.vrf}}",
+                    "type": "interface"
+                },
+                {
+                    "name": "edge-interface",
+                    "template": "",
+                    "type": "interface"
+                },
+                {
+                    "name": "ospf-vrf-int",
+                    "template": "{% for vrf in router.vrfs %}{% if vrf.name==interface.vrf %}\nrouter ospf {{vrf.ospf_process}} vrf {{vrf.name}}\n  router-id {{construct_ipv4(interface.ipv4_network,interface.ip_end)}}\n  redistribute bgp {{globals.asn}} subnets\n  redistribute vrf TC bgp 25253 subnets\n  network {{interface.ipv4_network}} 0.0.0.255 area 0\n  #ip ospf {{vrf.ospf_process}} area 0\nexit\ninterface {{interface.name}}\n{% endif %}{% endfor %}",
+                    "type": "interface",
+                    "values": {}
+                }
+            ],
+            "template": "interface {{interface.name}}\n{% if interface.disable %}\n# cette interface ne doit pas etre configuree\n{% endif %}\n{% if interface.peer %}\n  description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}\n{% endif %}\n  no shutdown\n  {% for classe in interface.resolved_classes %}# classe {{classe.name}}\n  {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n  # fin classe {{classe.name}}\n  {% endfor %}\n  ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}\n\n  #template specifique a cette interface\n    {{ interface.interface_template }}\nexit\n# fin interface {{interface.name}}",
+            "uid": "a8f6813c-8ed2-44da-bed4-dd176d6df4ce",
+            "vrf": "IT"
+        }
+    ],
+    "loopback_end": 22,
+    "name": "PE2-2",
+    "ospf4_area": 0,
+    "ospf4_process": 1,
+    "peers_end": [
+        21,
+        22,
+        23
+    ],
+    "resolved_classes": [
+        {
+            "name": "backbone",
+            "template": "",
+            "type": "router",
+            "values": {
+                "ospf4_area": 0,
+                "ospf4_process": 1
+            }
+        },
+        {
+            "name": "loopback",
+            "template": "int Loopback0\n  ip address 192.168.10.{{router.loopback_end}} 255.255.255.255\n  ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}\nexit",
+            "type": "router"
+        },
+        {
+            "name": "vrf-router",
+            "template": "",
+            "type": "router",
+            "values": {
+                "vrfs": [
+                    {
+                        "exports": [
+                            100,
+                            301
+                        ],
+                        "imports": [
+                            100,
+                            300
+                        ],
+                        "name": "TC",
+                        "ospf_process": 2,
+                        "rd": 100
+                    },
+                    {
+                        "exports": [
+                            200,
+                            301
+                        ],
+                        "imports": [
+                            200,
+                            300
+                        ],
+                        "name": "IT",
+                        "ospf_process": 3,
+                        "rd": 200
+                    },
+                    {
+                        "exports": [
+                            300
+                        ],
+                        "imports": [
+                            300,
+                            301
+                        ],
+                        "name": "SHR",
+                        "ospf_process": 4,
+                        "rd": 300
+                    }
+                ]
+            }
+        },
+        {
+            "name": "ospf4-router",
+            "template": "router ospf {{router.ospf4_process}}\nexit",
+            "type": "router"
+        },
+        {
+            "name": "mpls-router",
+            "template": "mpls ldp router-id Loopback0\nmpls ldp discovery targeted-hello  accept\nmpls label range 300 399\nip cef",
+            "type": "router"
+        },
+        {
+            "name": "provider-edge",
+            "template": "",
+            "type": "router"
+        },
+        {
+            "name": "bgp-router",
+            "template": "router bgp {{globals.asn}}\n  bgp router-id 192.168.10.{{router.loopback_end}}\n{% for peer in router.peers_end %}{% if peer != router.loopback_end %}\n    neighbor 192.168.10.{{peer}} remote-as {{globals.asn}}\n    neighbor 192.168.10.{{peer}} update-source Loopback0\n    neighbor 192.168.10.{{peer}} activate\n{% endif %}{% endfor %}\n  !\n  address-family ipv4 unicast\n{% for peer in router.peers_end %}{% if peer != router.loopback_end %}\n    neighbor 192.168.10.{{peer}} remote-as {{globals.asn}}\n    neighbor 192.168.10.{{peer}} activate\n{% endif %}{% endfor %}\n  exit-address-family\n  !\n  address-family vpnv4\n{% for peer in router.peers_end %}{% if peer != router.loopback_end %}\n    neighbor 192.168.10.{{peer}} remote-as 25253\n    neighbor 192.168.10.{{peer}} send-community extended\n    neighbor 192.168.10.{{peer}} next-hop-self\n    neighbor 192.168.10.{{peer}} activate\n{% endif %}{% endfor %}\n  exit-address-family\n  !\n{% for vrf in router.vrfs %}\n  address-family ipv4 vrf {{vrf.name}}\n{% for peer in router.peers_end %}{% if peer != router.loopback_end %}\n    neighbor 192.168.10.{{peer}} remote-as 25253\n    neighbor 192.168.10.{{peer}} activate\n{% endif %}{% endfor %}\n    redistribute ospf {{vrf.ospf_process}} match internal external 2\n    no synchronization\n  exit-address-family\n  !\n{% endfor %}\n\nexit\n#--",
+            "type": "router",
+            "values": {
+                "peers_end": [
+                    21,
+                    22,
+                    23
+                ]
+            }
+        }
+    ],
+    "router_id": "0.0.0.3",
+    "router_template": "",
+    "template": "#### configuration de {{router.name}}\nhostname {{router.name}}\nno ip domain lookup\nip arp proxy disable\n\n\n{% for vrf in router.vrfs %}\nip vrf {{vrf.name}}\n  rd {{globals.asn}}:{{vrf.rd}}\n  {% for rt in vrf.imports %}\n  route-target import {{globals.asn}}:{{rt}}\n  {% endfor %}\n  {% for rt in vrf.exports %}\n  route-target export {{globals.asn}}:{{rt}}\n  {% endfor %}\n{% endfor %}\n\n{% for classe in router.resolved_classes %}\n# classe {{classe.name}}\n{{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n# fin classe {{classe.name}}\n#--\n{% endfor %}\n\n{% for interface in router.interfaces %}\n{{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n#--\n{% endfor %}\n\n\n\n{% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}\n# template specifique\n{{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4,globals=globals)}}\n#fin de la configuration de {{router.name}}\n#--\nmenu tp command 1 show ip cef\nmenu tp command 2 show mpls ldp neighbor\nmenu tp command 3 show mpls forwarding-table\nmenu tp command 4 show mpls ip binding\nmenu tp command e menu-exit\nmenu tp command q menu-exit\n#--\nmenu tp prompt $ ====menu TP=====\n1. voir la FIB   show ip cef\n2. voisins LDP   show mpls ldp neighbor\n3. voir la LFIB  show mpls forwarding-table\n4. voir la LIB   show mpls ip binding\n    (q|e). quitter\nchoix : $",
+    "vrfs": [
+        {
+            "exports": [
+                100,
+                301
+            ],
+            "imports": [
+                100,
+                300
+            ],
+            "name": "TC",
+            "ospf_process": 2,
+            "rd": 100
+        },
+        {
+            "exports": [
+                200,
+                301
+            ],
+            "imports": [
+                200,
+                300
+            ],
+            "name": "IT",
+            "ospf_process": 3,
+            "rd": 200
+        },
+        {
+            "exports": [
+                300
+            ],
+            "imports": [
+                300,
+                301
+            ],
+            "name": "SHR",
+            "ospf_process": 4,
+            "rd": 300
+        }
+    ]
+}

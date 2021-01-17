@@ -1,3 +1,10 @@
+# Script NAS
+Le script est composé de deux parties: le programme python et son fichier de configuration (YAML).
+Le fichier de configuration ``full-ospf-user-conf.yaml`` correpond au setup du TP3 NAS.
+Le projet GNS3 est inclus dans ce repo: ``projet-nas.gns3``.
+
+Dans le dossier `sample-output` se trouvent les configuration Cisco qui seront générées par le fichier de configuration `full-ospf-user-conf.yaml`.
+
 # Autoconfigurateur Cisco IOS
 Ce script python se connecte au serveur GNS3 local et configure entièrement 
 un réseau OSPF sur tous les routeurs Cisco. Il effectue tout seul l'adressage IP, l'allocation

@@ -1,0 +1,485 @@
+---
+globals:
+  asn: 25253
+default_router_classes: [ ]
+default_interface_classes: [ ]
+classes:
+# classes abstraites
+  - name: backbone #routeur OSPF de cœur
+    type: router
+    classes: [ loopback, ospf4-router, mpls-router ]
+    values:
+      ospf4_process: 1
+      ospf4_area: 0
+
+  - name: backbone-interface
+    type: interface
+    classes: [ ospf4-interface, mpls-interface ]
+
+  - name: provider-edge
+    type: router
+    classes: [ bgp-router,vrf-router, backbone ]
+
+  - name: provider
+    type: router
+    classes: [backbone]
+    interface_classes: [backbone-interface] # toutes ses interfaces sont des interfaces OSPF
+
+  - name: customer-edge
+    type: router
+    classes: [ ospf-ce-router ]
+    values:
+      ospf4_process: 1
+      ospf4_area: 0
+
+  - name: edge-interface # interface PE côté CE
+    type: interface
+    classes: [ospf-vrf-int, vrf-interface]
+
+  - name: routing-interface # interface CE côté PE
+    type: interface
+    classes: [ospf4-interface]
+
+  - name: ce-ext # interface CE côté client
+    type: interface
+    classes: [ dhcp-server ]
+    values:
+      ipv4_netmask: 255.255.255.0
+# OSPF
+  - name: ospf-vrf-int
+    type: interface
+    template: |-
+      {% for vrf in router.vrfs %}{% if vrf.name==interface.vrf %}
+      router ospf {{vrf.ospf_process}} vrf {{vrf.name}}
+        router-id {{construct_ipv4(interface.ipv4_network,interface.ip_end)}}
+        redistribute bgp {{globals.asn}} subnets
+        redistribute vrf TC bgp 25253 subnets
+        network {{interface.ipv4_network}} 0.0.0.255 area 0
+        #ip ospf {{vrf.ospf_process}} area 0
+      exit
+      interface {{interface.name}}
+      {% endif %}{% endfor %}
+    values: {}
+
+  - name: ospf-ce-router
+    type: router
+    template: |-
+      router ospf 1
+        router-id {{router.router_id}}
+        redistribute connected subnets
+      exit
+    values: {}
+# classes concrètes
+  - name: dhcp-server
+    type: interface
+    template: |-
+      ip dhcp pool {{interface.name}}
+       network {{interface.ipv4_network}} {{interface.ipv4_netmask}}
+       default-router {{construct_ipv4(interface.ipv4_network,interface.ip_end)}}
+      exit
+      int {{interface.name}}
+
+  - name: vrf-router
+    type: router
+    template: ''
+    values:
+      vrfs:
+        - name: TC
+          rd: 100
+          imports: [ 100, 300 ]
+          exports: [ 100, 301 ]
+          ospf_process: 2
+        - name: IT
+          rd: 200
+          imports: [ 200,300 ]
+          exports: [ 200,301 ]
+          ospf_process: 3
+        - name: SHR
+          rd: 300
+          imports: [ 300,301 ]
+          exports: [ 300 ]
+          ospf_process: 4
+
+  - name: vrf-interface
+    type: interface
+    template: |-
+      ip vrf forwarding {{interface.vrf}}
+
+  - name: loopback
+    template: |-
+      int Loopback0
+        ip address 192.168.10.{{router.loopback_end}} 255.255.255.255
+        ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}
+      exit
+
+    type: router
+  - name: ospf4-interface
+    type: interface
+    template: |-
+      ip ospf {{router.ospf4_process}} area {{router.ospf4_area}}
+
+  - name: ospf4-router
+    type: router
+    template: |-
+      router ospf {{router.ospf4_process}}
+      exit
+
+  - name: mpls-interface
+    type: interface
+    template: |-
+      mpls ip
+      mpls mtu override 1560
+
+  - name: mpls-router
+    type: router
+    template: |-
+      mpls ldp router-id Loopback0
+      mpls ldp discovery targeted-hello  accept
+      mpls label range 300 399
+      ip cef
+
+  - name: bgp-router
+    type: router
+    template: |-
+      router bgp {{globals.asn}}
+        bgp router-id 192.168.10.{{router.loopback_end}}
+      {% for peer in router.peers_end %}{% if peer != router.loopback_end %}
+          neighbor 192.168.10.{{peer}} remote-as {{globals.asn}}
+          neighbor 192.168.10.{{peer}} update-source Loopback0
+          neighbor 192.168.10.{{peer}} activate
+      {% endif %}{% endfor %}
+        !
+        address-family ipv4 unicast
+      {% for peer in router.peers_end %}{% if peer != router.loopback_end %}
+          neighbor 192.168.10.{{peer}} remote-as {{globals.asn}}
+          neighbor 192.168.10.{{peer}} activate
+      {% endif %}{% endfor %}
+        exit-address-family
+        !
+        address-family vpnv4
+      {% for peer in router.peers_end %}{% if peer != router.loopback_end %}
+          neighbor 192.168.10.{{peer}} remote-as 25253
+          neighbor 192.168.10.{{peer}} send-community extended
+          neighbor 192.168.10.{{peer}} next-hop-self
+          neighbor 192.168.10.{{peer}} activate
+      {% endif %}{% endfor %}
+        exit-address-family
+        !
+      {% for vrf in router.vrfs %}
+        address-family ipv4 vrf {{vrf.name}}
+      {% for peer in router.peers_end %}{% if peer != router.loopback_end %}
+          neighbor 192.168.10.{{peer}} remote-as 25253
+          neighbor 192.168.10.{{peer}} activate
+      {% endif %}{% endfor %}
+          redistribute ospf {{vrf.ospf_process}} match internal external 2
+          no synchronization
+        exit-address-family
+        !
+      {% endfor %}
+
+      exit
+      #--
+    values:
+      peers_end: [ 21,22,23 ] # le nombre à la fin de l'adresse de loopback
+templates:
+  router: |-
+    #### configuration de {{router.name}}
+    hostname {{router.name}}
+    no ip domain lookup
+    ip arp proxy disable
+
+
+    {% for vrf in router.vrfs %}
+    ip vrf {{vrf.name}}
+      rd {{globals.asn}}:{{vrf.rd}}
+      {% for rt in vrf.imports %}
+      route-target import {{globals.asn}}:{{rt}}
+      {% endfor %}
+      {% for rt in vrf.exports %}
+      route-target export {{globals.asn}}:{{rt}}
+      {% endfor %}
+    {% endfor %}
+
+    {% for classe in router.resolved_classes %}
+    # classe {{classe.name}}
+    {{Template(classe.template).render(Template=Template,classe=classe,router=router,construct_ipv4=construct_ipv4,globals=globals)}}
+    # fin classe {{classe.name}}
+    #--
+    {% endfor %}
+
+    {% for interface in router.interfaces %}
+    {{Template(interface.template).render(Template=Template,interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}
+    #--
+    {% endfor %}
+
+
+
+    {% if router.disable %}# ce routeur ne doit pas etre configure{% endif %}
+    # template specifique
+    {{Template(router.router_template).render(Template=Template,router=router,construct_ipv4=construct_ipv4,globals=globals)}}
+    #fin de la configuration de {{router.name}}
+    #--
+    menu tp command 1 show ip cef
+    menu tp command 2 show mpls ldp neighbor
+    menu tp command 3 show mpls forwarding-table
+    menu tp command 4 show mpls ip binding
+    menu tp command e menu-exit
+    menu tp command q menu-exit
+    #--
+    menu tp prompt $ ====menu TP=====
+    1. voir la FIB   show ip cef
+    2. voisins LDP   show mpls ldp neighbor
+    3. voir la LFIB  show mpls forwarding-table
+    4. voir la LIB   show mpls ip binding
+        (q|e). quitter
+    choix : $
+
+
+  interface: |-
+    interface {{interface.name}}
+    {% if interface.disable %}
+    # cette interface ne doit pas etre configuree
+    {% endif %}
+    {% if interface.peer %}
+      description connectee a {{interface.peer.interface}} de  {{interface.peer.name}}
+    {% endif %}
+      no shutdown
+      {% for classe in interface.resolved_classes %}# classe {{classe.name}}
+      {{Template(classe.template).render(interface=interface,router=router,construct_ipv4=construct_ipv4,globals=globals)}}
+      # fin classe {{classe.name}}
+      {% endfor %}
+      ip address {{construct_ipv4(interface.ipv4_network,interface.ip_end)}} {{interface.ipv4_netmask}}
+
+      #template specifique a cette interface
+        {{ interface.interface_template }}
+    exit
+    # fin interface {{interface.name}}
+links:
+  - name: P2<-->PE2-1
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 172.26.21.0
+  - name: PE2-1<-->TC_CE21
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 194.10.21.0
+      vrf: TC
+  - name: PE2-1<-->IT_CE21
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 194.20.21.0
+      vrf: IT
+  - name: P2<-->PE2-2
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 172.26.22.0
+  - name: PE2-2<-->TC_CE22
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 194.10.22.0
+      vrf: TC
+  - name: PE2-2<-->IT_CE22
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 194.20.22.0
+      vrf: IT
+  - name: P2<-->PE2-3
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 172.26.23.0
+  - name: PE2-3<-->TC_CE23
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 194.10.23.0
+      vrf: TC
+  - name: SHR_CE23<-->PE2-3
+    interface_classes: [ ]
+    router_classes: [ ]
+    template: ''
+    interface_values:
+      ipv4_network: 194.30.10.0
+      vrf: SHR
+
+routers:
+  - name: P2
+    disable: false
+    classes: [ provider ]
+    template: ''
+    interfaces:
+      - name: f1/0
+        template: ''
+        classes: [  ]
+        values: { }
+      - name: f2/0
+        template: ''
+        classes: [ ]
+        values: { }
+      - name: f3/0
+        template: ''
+        classes: []
+        values: { }
+    values:
+      loopback_end: 20
+  - name: PE2-1
+    disable: false
+    classes: [ provider-edge ]
+    template: ''
+    interfaces:
+      - name: f1/0
+        template: ''
+        classes: [ backbone-interface ]
+        values: { }
+      - name: f2/0
+        template: ''
+        classes: [ edge-interface ]
+        values: {}
+      - name: f3/0
+        template: ''
+        classes: [ edge-interface ]
+        values: {}
+    values:
+      loopback_end: 21
+  - name: PE2-2
+    disable: false
+    classes: [ provider-edge ]
+    template: ''
+    interfaces:
+      - name: f2/0
+        template: ''
+        classes: [ backbone-interface ]
+        values: { }
+      - name: f3/0
+        template: ''
+        classes: [ edge-interface ]
+        values: { }
+      - name: f4/0
+        template: ''
+        classes: [ edge-interface ]
+        values: { }
+    values:
+      loopback_end: 22
+  - name: PE2-3
+    disable: false
+    classes: [ provider-edge ]
+    template: ''
+    interfaces:
+      - name: f3/0
+        template: ''
+        classes: [ backbone-interface ]
+        values: { }
+      - name: f2/0
+        template: ''
+        classes: [ edge-interface ]
+        values: { }
+      - name: f4/0
+        template: ''
+        classes: [ edge-interface ]
+        values: { }
+    values:
+      loopback_end: 23
+  - name: TC_CE23
+    disable: false
+    classes: [ customer-edge ]
+    template: ''
+    interfaces:
+      - name: f2/0
+        template: ''
+        classes: [ routing-interface ]
+        values: { }
+      - name: f0/0
+        template: ''
+        classes: [ ce-ext ]
+        values:
+          ipv4_network: 10.23.0.0
+    values: { }
+  - name: TC_CE21
+    disable: false
+    classes: [ customer-edge ]
+    template: ''
+    interfaces:
+      - name: f2/0
+        template: ''
+        classes: [ routing-interface ]
+        values: { }
+      - name: f0/0
+        template: ''
+        classes: [ ce-ext ]
+        values:
+          ipv4_network: 10.21.0.0
+    values: { }
+  - name: IT_CE21
+    disable: false
+    classes: [ customer-edge ]
+    template: ''
+    interfaces:
+      - name: f3/0
+        template: ''
+        classes: [ routing-interface ]
+        values: { }
+      - name: f0/0
+        template: ''
+        classes: [ ce-ext ]
+        values:
+          ipv4_network: 20.21.0.0
+    values: { }
+  - name: TC_CE22
+    disable: false
+    classes: [ customer-edge ]
+    template: ''
+    interfaces:
+      - name: f3/0
+        template: ''
+        classes: [ routing-interface ]
+        values: { }
+      - name: f0/0
+        template: ''
+        classes: [ ce-ext ]
+        values:
+          ipv4_network: 10.22.0.0
+    values: { }
+  - name: IT_CE22
+    disable: false
+    classes: [ customer-edge ]
+    template: ''
+    interfaces:
+      - name: f4/0
+        template: ''
+        classes: [routing-interface ]
+        values: { }
+      - name: f0/0
+        template: ''
+        classes: [ ce-ext ]
+        values:
+          ipv4_network: 20.22.0.0
+    values: { }
+  - name: SHR_CE23
+    disable: false
+    classes: [ customer-edge ]
+    template: ''
+    interfaces:
+      - name: f4/0
+        template: ''
+        classes: [ routing-interface ]
+        values: {}
+      - name: f0/0
+        template: ''
+        classes: [ ce-ext ]
+        values:
+          ipv4_network: 30.10.0.0
+    values: { }
