@@ -5,20 +5,21 @@ default_router_classes: [ ]
 default_interface_classes: [ ]
 classes:
 # classes abstraites
-  - name: backbone #routeur OSPF de cœur
+  - name: backbone
     type: router
-    classes: [ loopback, ospf4-router, mpls-router ]
+    classes: [ loopback, ospf4-router, mpls-router, qos-router ]
     values:
       ospf4_process: 1
       ospf4_area: 0
 
   - name: backbone-interface
     type: interface
-    classes: [ ospf4-interface, mpls-interface ]
+    classes: [ ospf4-interface, mpls-interface, qos-output ] # le QoS output sera appliqué sur les interfaces des Provider
+    # mais ça ne sert à rien
 
   - name: provider-edge
     type: router
-    classes: [ bgp-router,vrf-router, backbone ]
+    classes: [ bgp-router,vrf-router, backbone, qos-router ]
 
   - name: provider
     type: router
@@ -34,7 +35,7 @@ classes:
 
   - name: edge-interface # interface PE côté CE
     type: interface
-    classes: [ospf-vrf-int, vrf-interface]
+    classes: [ospf-vrf-int, vrf-interface, qos-input]
 
   - name: routing-interface # interface CE côté PE
     type: interface
@@ -45,7 +46,86 @@ classes:
     classes: [ dhcp-server ]
     values:
       ipv4_netmask: 255.255.255.0
-# OSPF
+# classes concrètes
+# QoS
+  - name: qos-router
+    type: router
+    template: |-
+      # UDP any-any
+      access-list 102 permit udp any any
+      # TCP ...
+      access-list 103 permit tcp any any
+      # FTP
+      access-list 101 permit tcp any any eq ftp
+      access-list 101 permit tcp any any eq ftp-data
+      !
+      # IPROUTING
+      access-list 120 permit ospf any any
+      access-list 120 permit tcp any any eq bgp
+      !
+      # VIDEO
+      # ports SIP
+      access-list 130 permit udp any any eq 5060
+      access-list 130 permit tcp any any eq 5060
+      access-list 130 permit tcp any any eq 5061
+      access-list 130 permit udp any any eq 5061
+      # port RTMP
+      access-list 130 permit tcp any any eq 1935
+      !
+      # Best Effort
+
+      #--
+
+      # voir cours QoS slide 33 pour les classes
+      class-map match-all BESTEFFORT
+       match ip dscp default
+       # ou alors: match any
+      class-map match-all FTP
+        description traffic FTP (pings tcp)
+        match access-group 101
+        match access-group 60
+      class-map match-all IPROUTING
+        match access-group 120
+      class-map match-all VIDEO
+        description traffic pings udp
+        match access-group 130
+        match access-group 50
+      !
+      !
+      policy-map TOMARK
+       description traffic non marque, en entree
+       class BESTEFFORT
+        set ip dscp default
+       class FTP
+        # moyenne prio, moyenne drop
+        set ip dscp af22
+       class VIDEO
+        # forte prio, faible drop
+        set ip dscp af41
+       class IPROUTING
+        # les infos de routage sont critiques
+        set ip dscp ef
+      exit
+      policy-map MARKED
+        description traffic marque en sortie
+        class BESTEFFORT
+          bandwidth percent 5
+        class IPROUTING
+          bandwidth percent 5
+        class VIDEO
+          bandwidth percent 30
+        class FTP
+          bandwidth percent 40
+
+
+  - name: qos-input
+    type: interface
+    template: 'service-policy input TOMARK' # input côté client
+  - name: qos-output
+    type: interface
+    template: 'service-policy output TOMARK' # output vers le réseau cœur
+
+  # OSPF
   - name: ospf-vrf-int
     type: interface
     template: |-
@@ -69,7 +149,7 @@ classes:
         redistribute connected subnets
       exit
     values: {}
-# classes concrètes
+
   - name: dhcp-server
     type: interface
     template: |-
@@ -158,10 +238,10 @@ classes:
         !
         address-family vpnv4
       {% for peer in router.peers_end %}{% if peer != router.loopback_end %}
+          neighbor 192.168.10.{{peer}} activate
           neighbor 192.168.10.{{peer}} remote-as 25253
           neighbor 192.168.10.{{peer}} send-community extended
           neighbor 192.168.10.{{peer}} next-hop-self
-          neighbor 192.168.10.{{peer}} activate
       {% endif %}{% endfor %}
         exit-address-family
         !
@@ -223,6 +303,7 @@ templates:
     menu tp command 2 show mpls ldp neighbor
     menu tp command 3 show mpls forwarding-table
     menu tp command 4 show mpls ip binding
+    menu tp command 5 show policy-map interface
     menu tp command e menu-exit
     menu tp command q menu-exit
     #--
@@ -231,6 +312,7 @@ templates:
     2. voisins LDP   show mpls ldp neighbor
     3. voir la LFIB  show mpls forwarding-table
     4. voir la LIB   show mpls ip binding
+    5. afficher les compteurs QoS - show policy-map interface
         (q|e). quitter
     choix : $
 
