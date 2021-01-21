@@ -53,7 +53,6 @@ classes:
       router ospf {{vrf.ospf_process}} vrf {{vrf.name}}
         router-id {{construct_ipv4(interface.ipv4_network,interface.ip_end)}}
         redistribute bgp {{globals.asn}} subnets
-        redistribute vrf TC bgp 25253 subnets
         network {{interface.ipv4_network}} 0.0.0.255 area 0
         #ip ospf {{vrf.ospf_process}} area 0
       exit

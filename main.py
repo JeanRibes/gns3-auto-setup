@@ -347,8 +347,13 @@ def resolve_router_config(router: Router) -> dict:
     conf['router_template'] = safe_get_value(cc, '', 'template')
     conf['template'] = template
 
-    # re-mapping de la config utilisateur, pour les dessins GNS3
-    router.router_id = conf['router_id']
+    try:
+        # re-mapping de la config utilisateur, pour les dessins GNS3
+        router.router_id = conf['router_id']
+        if conf.get('loopback_end',None) is not None:
+            router.router_id = f"{conf.get('loopback_network','192.168.10')}.{conf['loopback_end']}"
+    except:
+        pass
 
     return conf
     # except:
