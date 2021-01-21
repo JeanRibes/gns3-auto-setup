@@ -55,56 +55,45 @@ classes:
       access-list 102 permit udp any any
       # TCP ...
       access-list 103 permit tcp any any
-      # FTP
-      access-list 101 permit tcp any any eq ftp
-      access-list 101 permit tcp any any eq ftp-data
       !
       # IPROUTING
       access-list 120 permit ospf any any
       access-list 120 permit tcp any any eq bgp
-      !
-      # VIDEO
-      # ports SIP
-      access-list 130 permit udp any any eq 5060
-      access-list 130 permit tcp any any eq 5060
-      access-list 130 permit tcp any any eq 5061
-      access-list 130 permit udp any any eq 5061
-      # port RTMP
-      access-list 130 permit tcp any any eq 1935
-      !
-      # Best Effort
-
-      #--
 
       # voir cours QoS slide 33 pour les classes
       class-map match-all BESTEFFORT
        match ip dscp default
-       # ou alors: match any
+       match mpls exp 0
       class-map match-all FTP
         description traffic FTP (pings tcp)
-        match access-group 101
-        match access-group 60
+        match access-group 103
+        match mpls exp 1
       class-map match-all IPROUTING
         match access-group 120
+        match mpls exp 3
       class-map match-all VIDEO
         description traffic pings udp
-        match access-group 130
-        match access-group 50
+        match access-group 102
+        match mpls exp 2
       !
       !
       policy-map TOMARK
        description traffic non marque, en entree
        class BESTEFFORT
         set ip dscp default
+        set mpls exp imp 0
        class FTP
         # moyenne prio, moyenne drop
         set ip dscp af22
+        set mpls experimental imposition 1
        class VIDEO
         # forte prio, faible drop
         set ip dscp af41
+        set mpls experimental imposition 2
        class IPROUTING
         # les infos de routage sont critiques
         set ip dscp ef
+        set mpls experimental imposition 3
       exit
       policy-map MARKED
         description traffic marque en sortie
@@ -123,7 +112,7 @@ classes:
     template: 'service-policy input TOMARK' # input côté client
   - name: qos-output
     type: interface
-    template: 'service-policy output TOMARK' # output vers le réseau cœur
+    template: 'service-policy output MARKED' # output vers le réseau cœur
 
   # OSPF
   - name: ospf-vrf-int
